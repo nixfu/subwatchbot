@@ -429,27 +429,27 @@ def check_comment(comment):
             logger.info("    -Removed-ALREADY removed by %s" % comment.banned_by)
         else:
             logger.info("    +Removed")
-            ####comment.mod.remove()
+            comment.mod.remove()
     
     if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
         # ban
         if comment.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
-            ####reddit.subreddit(subname).banned.add(comment.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+comment.permalink)
+            reddit.subreddit(subname).banned.add(comment.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+comment.permalink)
         else:
             logger.info("    -BAN User-ALREADY")
         # mute
         if Settings['SubConfig'][subname]['mute_when_banned']:
             if comment.author not in reddit.subreddit(subname).muted():
                 logger.info("    +MUTE User %s" % comment.author.id)
-                ####reddit.subreddit(subname).muted.add(comment.author)
+                reddit.subreddit(subname).muted.add(comment.author)
             else:
                 logger.info("    -MUTE User-ALREADY" )
 
     # elif because user was banned, then no need to report to modqueue for further review
     elif User_Score > int(Settings['SubConfig'][subname]['level_report']):
         logger.info("    +Report to ModQueue")
-        ####comment.report('Possible Troll Post -- User Score=%s' % User_Score)
+        comment.report('Possible Troll Post -- User Score=%s' % User_Score)
 
 
 def check_submission(submission):
@@ -486,29 +486,29 @@ def check_submission(submission):
             logger.info("    -Remove-ALREADY by User Deleted %s" % submission.selftext)
         else:
             logger.info("    +Remove")
-            ####submission.mod.remove()
+            submission.mod.remove()
             logger.info("    +Lock")
-            ####submission.mod.lock()
+            submission.mod.lock()
    
     if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
         # ban
         if submission.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
-            ####reddit.subreddit(subname).banned.add(submission.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+submission.permalink)
+            reddit.subreddit(subname).banned.add(submission.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+submission.permalink)
         else:
             logger.info("    -BAN User-ALREADY")
         # mute
         if Settings['SubConfig'][subname]['mute_when_banned']:
             if submission.author not in reddit.subreddit(subname).muted():
                 logger.info("    +MUTE User")
-                ####reddit.subreddit(subname).muted.add(submission.author)
+                reddit.subreddit(subname).muted.add(submission.author)
             else:
                 logger.info("    -MUTE User-ALREADY" )
 
     # elif because user was banned, then no need to report to modqueue for further review
     elif User_Score > int(Settings['SubConfig'][subname]['level_report']):
         logger.info("    +Report to ModQueue")
-        ####submission.report('Possible Troll Post -- User Score=%s' % User_Score)
+        submission.report('Possible Troll Post -- User Score=%s' % User_Score)
 
 
 # =============================================================================
