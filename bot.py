@@ -324,32 +324,36 @@ def get_subreddit_settings(SubName):
 
     logger.debug("SETTINGS %s: %s" % (SubName, Settings['SubConfig'][SubName]))
 
-def obtain_mod_permissions(subreddit_name):
-    """
-    A function to check if we have mod permissions in a subreddit, and what kind of mod permissions it has.
-    The important ones needed are: wiki - (optional) so that it can get configuration settings from the sub
-                                   posts - (optional)
-    Giving extra permissions does not matter as it will not use them.
-    More info: https://www.reddit.com/r/modhelp/wiki/mod_permissions
-    :param subreddit_name: Name of a subreddit.
-    :return: A tuple. First item is True/False on whether Artemis is a moderator. Second item is permissions, if any.
-    """
-
+def get_mod_permissions(subname):
     am_moderator = False
     my_permissions = None
     # Get the list of moderators.
-    list_of_moderators = reddit.subreddit(subreddit_name).moderator()
+    list_of_moderators = reddit.subreddit(subname).moderator()
 
-    # Iterate over the list of moderators to see if Artemis is in it.
+    # Iterate over the list of moderators to see if we are in the list
     for moderator in list_of_moderators:
         if moderator == Settings['Reddit']['username']:  # This is me!
-            am_moderator = True  # Turns out, I am a moderator.
+            am_moderator = True  # Turns out, I am a moderator, whoohoo
             # Get the permissions I have as a list. e.g. `['wiki']`
             my_permissions = moderator.mod_permissions
 
-    mod_log = 'Mod Permissions: Artemis r/{} moderator status is {}. Permissions are {}.'
-    logger.debug("%s Mod=%s Perms=%s" %
-                 (subreddit_name, am_moderator, my_permissions))
+    logger.debug("%s Sub Permissions - Mod=%s Perms=%s" % (subname, am_moderator, my_permissions))
+
+    if "All" in my_permissions:
+        logger.debug("%s Sub Permissions = ALL" % subname)
+    else:
+        if mail not in my_permissions:
+            # make sure we overwide without mail perms
+            Settings['SubConfig'][subname]['mute_when_banned'] = False
+        if 'wiki' not in my_permissions:
+            logger.warning("%s Sub Permissions DOES NOT contain WIKI perms" % subname)
+            am_moderator=0
+        if 'posts' not in my_permissions:
+            logger.warning("%s Sub Permissions DOES NOT contain POSTS perms" % subname)
+            am_moderator=0
+        if 'access' not in my_permissions:
+            logger.warning("%s Sub Permissions DOES NOT contain ACCCESS perms" % subname)
+            am_moderator=0
     return am_moderator, my_permissions
 
 
@@ -391,19 +395,12 @@ def accept_mod_invites():
             new_subreddit = message.subreddit.display_name.lower()
 
             # Reply to the subreddit confirming the invite.
-            current_permissions = obtain_mod_permissions(str(msg_subreddit))
-            if current_permissions[0]:  # We are a moderator.
-                # Fetch the list of moderator permissions we have. This will be an empty list if we are a mod
-                # but has no actual permissions.
+            current_permissions = _mod_permissions(str(msg_subreddit))
+            if not current_permissions[0]:  # We are not a moderator.
                 list_of_permissions = current_permissions[1]
-                if 'wiki' not in list_of_permissions:
-                    # We were invited to be a mod but don't have the proper permissions. Let the mods know.
-                    #message.reply(MSG_ACCEPT_WRONG_PERMISSIONS + BOT_DISCLAIMER.format(msg_subreddit))
-                    logger.info(
-                        "Messaging: I don't have the right wiki permissions. Replied to subreddit.")
-            else:
-                return  # Exit as we are not a moderator.
-
+                logger.info("Messaging: I don't have the right mod permissions. Replied to subreddit.")
+                # reply to subreddit about permissions
+                reddit.subreddit(str(msg_subreddit).message("ATTN: Moderator permissions are not set correct for subwatchbot.  Current=%s Required=Access,Posts,Wiki" % current_permissions[1])
 
 def check_comment(comment):
     authorname = ""
@@ -552,11 +549,15 @@ def main():
             accept_mod_invites()
             subList = []
             for subs in reddit.user.moderator_subreddits():
+                sub_permissions = []
                 SubName = str(subs).lower()
                 get_subreddit_settings(SubName)
-                # TODO: add get_subreddit_permissions
-                if 'subsearchlist' in Settings['SubConfig'][SubName]:
-                    subList.append(SubName)
+                sub_permissions = get_mod_permissions(SubName)
+                if sub_permissions[0]:  # We are a moderator.
+                    if 'subsearchlist' in Settings['SubConfig'][SubName]:
+                        subList.append(SubName)
+                else: 
+                    logger.warning("SKIPPING SUB %s due to incorrect permissions",)
             logger.debug("subList: %s" % subList)
             next_refresh_time = int(
                 round(time.time())) + (60 * int(Settings['Config']['config_refresh_mins']))
