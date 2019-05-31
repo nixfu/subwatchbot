@@ -468,28 +468,22 @@ def get_subreddit_settings(SubName):
             Settings['SubConfig'][SubName][key] = wikidata[key]
         elif key in Settings['Config']:
             Settings['SubConfig'][SubName][key] = Settings['Config'][key]
-        else:
+        elif key not in settingkeys:
             logger.error("Uknown key: %s" % key)
-    print ("SETTINGS: %s" % Settings['SubConfig'][SubName])
 
     # create a sub search list for each subreddit
     if 'subsearchlist' in wikidata:
-        logger.debug("%s - Using Wiki SearchList: %s" %
-                     (SubName, wikidata['subsearchlist']))
-        Settings['SubConfig'][SubName]['subsearchlist'] = wikidata['subsearchlist']
+        #logger.debug("%s - Using Wiki SearchList: %s" % (SubName, wikidata['subsearchlist']))
+        #Settings['SubConfig'][SubName]['subsearchlist'] = wikidata['subsearchlist']
+        pass
     elif SubName in Settings['SubSearchLists']:
-        logger.debug("%s - Using config-sub SearchList: %s" %
-                     (SubName, Settings['SubSearchLists'][SubName]))
-        Settings['SubConfig'][SubName]['subsearchlist'] = [
-            x.strip() for x in Settings['SubSearchLists'][SubName].split(',')]
+        #logger.debug("%s - Using config-sub SearchList: %s" % (SubName, Settings['SubSearchLists'][SubName]))
+        Settings['SubConfig'][SubName]['subsearchlist'] = [ x.strip() for x in Settings['SubSearchLists'][SubName].split(',')]
     elif 'default' in Settings['SubSearchLists']:
-        logger.debug("%s - Using config-default SearchList: %s" %
-                     (SubName, Settings['SubSearchLists']['default']))
-        Settings['SubConfig'][SubName]['subsearchlist'] = [
-            x.strip() for x in Settings['SubSearchLists']['default'].split(',')]
+        #logger.debug("%s - Using config-default SearchList: %s" % (SubName, Settings['SubSearchLists']['default']))
+        Settings['SubConfig'][SubName]['subsearchlist'] = [ x.strip() for x in Settings['SubSearchLists']['default'].split(',')]
     else:
-        Settings['SubConfig'][SubName]['subsearchlist'] = [
-            'chapotraphouse', 'chapotraphouse2']
+        Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
         logger.error("NO DEFAULT SubSearchList")
 
 
