@@ -462,7 +462,7 @@ def get_subreddit_settings(SubName):
 
     # use settings from subreddit wiki else use defaults
     settingkeys = ['level_warn', 'level_remove', 'level_ban', 'archive_modmail',
-                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions']
+                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist']
     for key in settingkeys:
         if key in wikidata:
             Settings['SubConfig'][SubName][key] = wikidata[key]
@@ -470,6 +470,7 @@ def get_subreddit_settings(SubName):
             Settings['SubConfig'][SubName][key] = Settings['Config'][key]
         else:
             logger.error("Uknown key: %s" % key)
+    print ("SETTINGS: %s" % Settings['SubConfig'][SubName])
 
     # create a sub search list for each subreddit
     if 'subsearchlist' in wikidata:
@@ -490,7 +491,6 @@ def get_subreddit_settings(SubName):
         Settings['SubConfig'][SubName]['subsearchlist'] = [
             'chapotraphouse', 'chapotraphouse2']
         logger.error("NO DEFAULT SubSearchList")
-    pprint(Settigs['SubConfig'[SubName]])
 
 
 def obtain_mod_permissions(subreddit_name):
@@ -660,11 +660,6 @@ def main():
             # Allows the bot to exit on ^C, all other exceptions are ignored
             except KeyboardInterrupt:
                 break
-            except RequestException:
-                # Usually occurs when Reddit is not available. Non-fatal, but annoying.
-                logger.error(
-                    "Failed to check mentions due to connection error. sleep extra 30 before restarting loop.")
-                time.sleep(30)
             except Exception as err:
                 logger.exception("Unknown Exception in Main Loop")
 
