@@ -134,59 +134,6 @@ def create_db():
         if con:
             con.close()
 
-
-# TODO: work on submission request processing
-"""
-def check_submission(submission):
-    logger.info("submission: %s %s  user=%-20s http://reddit.com%s" % (time.strftime('%Y-%m-%d %H:%M:%S',
-                                                                                     time.localtime(submission.created_utc)), submission.id, submission.author, submission.permalink))
-    User_Score = get_user_score(
-        submission.author, settings.REDDIT_SUBREDDIT, settings.CHECK_KARMA_SUBS)
-    logger.debug("    user scores: local=%s remote=%s flag=%s" %
-                 (userData[1], userData[2], userData[0]))
-
-    if userData[0].lower() == "REMOTE_VERY".lower():  # Auto Ban and Remove Submission
-        logger.info("    user scores: local=%s remote=%s flag=%s" %
-                    (userData[1], userData[2], userData[0]))
-
-        if submission.selftext == "[Removed]":
-            logger.info("    -Remove-ALREADY-Removed %s" % submission.selftext)
-        elif submission.selftext == "[deleted]":
-            logger.info("    -Remove-ALREADY")
-            logger.info("    -User Deleted %s" % submission.selftext)
-        else:
-            logger.info("    +Remove")
-            submission.mod.remove()
-            logger.info("    +Lock")
-            submission.mod.lock()
-
-        r = praw.Reddit(user_agent=settings.REDDIT_USER_AGENT, client_id=settings.REDDIT_CLIENT_ID,
-                        client_secret=settings.REDDIT_CLIENT_SECRET, username=settings.REDDIT_USERNAME, password=settings.REDDIT_PASSWORD)
-        if submission.author not in r.subreddit(settings.REDDIT_SUBREDDIT).banned():
-            logger.info("    +BAN User")
-            r.subreddit(settings.REDDIT_SUBREDDIT).banned.add(
-                submission.author, ban_reason='TrollDetected Score='+str(userData[2]), note='https://reddit.com'+submission.permalink)
-        else:
-            logger.info("    -BAN User-ALREADY")
-
-        if submission.author not in r.subreddit(settings.REDDIT_SUBREDDIT).muted():
-            logger.info("    +MUTE User")
-            r.subreddit(settings.REDDIT_SUBREDDIT).muted.add(submission.author)
-        else:
-            logger.info("    -MUTE User-ALREADY")
-
-    elif userData[0].lower() == "REMOTE_BAD".lower():  # Report Submission to modqueue
-        logger.info("    user scores: local=%s remote=%s flag=%s" %
-                    (userData[1], userData[2], userData[0]))
-        logger.info("    +Report to ModQueue")
-        submission.report(
-            'Possible Troll Post -- User Bad Karma Score=%s' % userData[2])
-
-    # elif userData[0] == "Local_Good":
-    # elif userData[0] == "Local_New":
-    # elif userData[0] == "Local_Low":
-"""
-
 # first check if we have recent data on the user in db
 def get_user_data_sql(Search_User, Search_Sub):
     # update cache db
@@ -629,7 +576,7 @@ def check_comment(comment):
             logger.debug("    userexceptions, skipping: %s" % authorname)
             return
 
-    logger.debug("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
+    logger.info("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
 
     # get user score
     searchsubs = [x.strip() for x in Settings['SubSearchLists'][subname].split(',')]
@@ -670,8 +617,9 @@ def check_submission(submission):
     authorname = ""
     subname = ""
     searchsubs = []
-    subname = str(comment.subreddit).lower()
-    authorname = str(comment.author)
+    subreddit = submission.subreddit
+    subname = str(submission.subreddit.name).lower()
+    authorname = str(submission.author)
 
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
@@ -681,41 +629,46 @@ def check_submission(submission):
             logger.debug("    userexceptions, skipping: %s" % authorname)
             return
 
-    logger.debug("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
+    logger.info("process submission: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(submission.created_utc)), submission.author, submission.permalink))
 
     # get user score
     searchsubs = [x.strip() for x in Settings['SubSearchLists'][subname].split(',')]
     User_Score = get_user_score(authorname, subname, searchsubs)
     logger.debug("   user score=%s" % User_Score)
+
     
     # Processing based on User_Score
     # 
     if User_Score > Settings['SubConfig'][subname]['level_remove']:
-        if comment.banned_by is not None:
-            logger.info("    -Removed-ALREADY removed by %s" % comment.banned_by)
+        if submission.selftext == "[Removed]":
+            logger.info("    -Remove-ALREADY by %s" % submission.selftext)
+        elif submission.selftext == "[deleted]":
+            logger.info("    -Remove-ALREADY by User Deleted %s" % submission.selftext)
         else:
-            logger.info("    +Removed")
-            comment.mod.remove()
-    
+            logger.info("    +Remove")
+            submission.mod.remove()
+            logger.info("    +Lock")
+            submission.mod.lock()
+   
     if User_Score > Settings['SubConfig'][subname]['level_ban']:
         # ban
-        if comment.author not in reddit.subreddit(subname).banned():
+        if submission.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
-            reddit.subreddit(subname).banned.add(comment.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+comment.permalink)
+            reddit.subreddit(subname).banned.add(submission.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+submission.permalink)
         else:
             logger.info("    -BAN User-ALREADY")
         # mute
         if Settings['SubConfig'][subname]['mute_when_banned']:
-            if comment.author not in reddit.subreddit(subname).muted():
-                logger.info("    +MUTE User %s" % comment.author.id)
-                reddit.subreddit(subname).muted.add(comment.author)
+            if submission.author not in reddit.subreddit(subname).muted():
+                logger.info("    +MUTE User")
+                reddit.subreddit(subname).muted.add(submission.author)
             else:
                 logger.info("    -MUTE User-ALREADY" )
 
     # elif because user was banned, then no need to report to modqueue for further review
     elif User_Score > Settings['SubConfig'][subname]['level_report']:
         logger.info("    +Report to ModQueue")
-        comment.report('Possible Troll Post -- User Score=%s' % User_Score)
+        submission.report('Possible Troll Post -- User Score=%s' % User_Score)
 
 
 # =============================================================================
@@ -770,13 +723,16 @@ def main():
             comment_stream = subreddit.stream.comments(pause_after=-1)
             submission_stream = subreddit.stream.submissions(pause_after=-1)
 
-            # TODO: Process submssion stream
-            # try:
-            #  for submission in submission_stream:
-            #    if submission is None:
-            #       break
-            #   #check_submission(submission)
-
+            # process submission stream
+            try:
+              for submission in submission_stream:
+                if submission is None:
+                   break
+                elif check_message_processed_sql(submission.id):
+                   continue
+                else:
+                   check_submission(submission)
+            # process comment stream
             try:
                 for comment in comment_stream:
                     if comment is None:
