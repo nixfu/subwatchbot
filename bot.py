@@ -208,7 +208,7 @@ def get_user_data_sql(Search_User, Search_Sub):
             Search_User), Search_Sub))
         row = qcur.fetchone()
         if row and row[4] > min_age:
-            logger.debug("Found SQL: %s" % row)
+            #logger.debug("Found SQL: %s" % row)
             comment_karma = row[0]
             comment_count = row[1]
             sub_karma = row[2]
@@ -506,9 +506,10 @@ def get_subreddit_settings(SubName):
         #    .format(subreddit.display_name,
         #            cfg_file.get('reddit', 'wiki_page_name'),
         #            username))
-        logger.info("%s - No WikiPage - Creating Default" % SubName)
         # create a default wiki page and set to be unlisted and mod edit only
-        create_default_wiki_page(SubName)
+        if not SubName.lower() == 'u_subwatchbot':
+           logger.info("%s - No WikiPage - Creating Default" % SubName)
+           create_default_wiki_page(SubName)
 
     # use settings from subreddit wiki else use defaults
     settingkeys = ['level_warn', 'level_remove', 'level_ban', 'archive_modmail',
@@ -629,7 +630,7 @@ def check_comment(comment):
     searchsubs = [x.strip()
                   for x in Settings['SubSearchLists'][subname].split(',')]
     User_Score = get_user_score(authorname, subname, searchsubs)
-    logger.debug("   user score: score=%s" % User_Score)
+    logger.debug("   user score=%s" % User_Score)
     # TODO: Add actual processing logic based on user score
 
 
