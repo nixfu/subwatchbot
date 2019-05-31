@@ -462,7 +462,7 @@ def get_subreddit_settings(SubName):
 
     # use settings from subreddit wiki else use defaults
     settingkeys = ['level_warn', 'level_remove', 'level_ban', 'archive_modmail',
-                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier']
+                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions']
     for key in settingkeys:
         if key in wikidata:
             Settings['SubConfig'][SubName][key] = wikidata[key]
@@ -490,6 +490,7 @@ def get_subreddit_settings(SubName):
         Settings['SubConfig'][SubName]['subsearchlist'] = [
             'chapotraphouse', 'chapotraphouse2']
         logger.error("NO DEFAULT SubSearchList")
+    pprint(Settigs['SubConfig'[SubName]])
 
 
 def obtain_mod_permissions(subreddit_name):
@@ -586,6 +587,8 @@ def check_comment(comment):
     User_Score = get_user_score(authorname, subname, searchsubs)
     logger.debug("   user score: score=%s" % User_Score)
     # TODO: Add actual processing logic based on user score
+
+
 
 # =============================================================================
 # MAIN
