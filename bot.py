@@ -625,6 +625,10 @@ def check_comment(comment):
     searchsubs = []
     subname = str(comment.subreddit).lower()
     authorname = str(comment.author)
+    if 'userexceptions' in Settings['SubConfig'][subname]:
+        if authorname in Settings['SubConfig'][subname]['userexceptions']:
+            logger.debug("Sub userexceptions, skipping: %s" % authorname)
+            return
     logger.debug("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime(
         '%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
     searchsubs = [x.strip()
@@ -672,6 +676,7 @@ def main():
             for subs in reddit.user.moderator_subreddits():
                 SubName = str(subs).lower()
                 get_subreddit_settings(SubName)
+                # TODO: add get_subreddit_permissions
                 if 'subsearchlist' in Settings['SubConfig'][SubName]:
                     subList.append(SubName)
             logger.debug("subList: %s" % subList)
