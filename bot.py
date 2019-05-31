@@ -317,17 +317,10 @@ def get_subreddit_settings(SubName):
     # create a sub search list for each subreddit
     if 'subsearchlist' in wikidata:
         #logger.debug("%s - Using Wiki SearchList: %s" % (SubName, wikidata['subsearchlist']))
-        #Settings['SubConfig'][SubName]['subsearchlist'] = wikidata['subsearchlist']
         pass
-    elif SubName in Settings['SubSearchLists']:
-        #logger.debug("%s - Using config-sub SearchList: %s" % (SubName, Settings['SubSearchLists'][SubName]))
-        Settings['SubConfig'][SubName]['subsearchlist'] = [ x.strip() for x in Settings['SubSearchLists'][SubName].split(',')]
-    elif 'default' in Settings['SubSearchLists']:
-        #logger.debug("%s - Using config-default SearchList: %s" % (SubName, Settings['SubSearchLists']['default']))
-        Settings['SubConfig'][SubName]['subsearchlist'] = [ x.strip() for x in Settings['SubSearchLists']['default'].split(',')]
     else:
         Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
-        logger.error("NO DEFAULT SubSearchList")
+        logger.error("%s NO DEFAULT SubSearchList" % SubName)
 
     logger.debug("SETTINGS %s: %s" % (SubName, Settings['SubConfig'][SubName]))
 
@@ -422,6 +415,7 @@ def check_comment(comment):
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
             logger.debug("    bot user skip")
+            return
     if 'userexceptions' in Settings['SubConfig'][subname]:
         if authorname.lower() in (name.lower() for name in Settings['SubConfig'][subname]['userexceptions']):
             logger.debug("    userexceptions, skipping: %s" % authorname)
@@ -430,7 +424,7 @@ def check_comment(comment):
     logger.info("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
 
     # get user score
-    searchsubs = [x.strip() for x in Settings['SubSearchLists'][subname].split(',')]
+    searchsubs = Settings['SubConfig'][subname]['subsearchlist']
     User_Score = get_user_score(authorname, subname, searchsubs)
     logger.debug("   user score=%s" % User_Score)
     
@@ -475,6 +469,7 @@ def check_submission(submission):
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
             logger.debug("    bot user skip")
+            return
     if 'userexceptions' in Settings['SubConfig'][subname]:
         if authorname.lower() in (name.lower() for name in Settings['SubConfig'][subname]['userexceptions']):
             logger.debug("    userexceptions, skipping: %s" % authorname)
@@ -483,7 +478,7 @@ def check_submission(submission):
     logger.info("process submission: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(submission.created_utc)), submission.author, submission.permalink))
 
     # get user score
-    searchsubs = [x.strip() for x in Settings['SubSearchLists'][subname].split(',')]
+    searchsubs = Settings['SubConfig'][SubName]['subsearchlist']
     User_Score = get_user_score(authorname, subname, searchsubs)
     logger.debug("   user score=%s" % User_Score)
 
