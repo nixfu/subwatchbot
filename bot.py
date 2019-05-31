@@ -86,37 +86,18 @@ def create_db():
         con.commit
     except sqlite3.Error as e:
         logger.error("Error2 {}:".format(e.args[0]))
-        logger.error("User=%s Sub=%s" % (Search_User, Search_Sub))
         sys.exit(1)
     finally:
         if con:
             con.close()
 
 
-def process_pm(message):
-    """
-    process the command in the message by determining the command and delegating the processing
-    :param message: the Reddit comment containing the command
-    """
-    pmcommand_match = re.search(
-        CommandRegex.pm_commandsearch, message.body, re.IGNORECASE)
-
-    if pmcommand_match and pmcommand_match.group(2):
-        try_send_report(message, pmcommand_match.group(2), message.author.name)
-    else:
-        try:
-            logger.info("UNKNOWN COMMAND: %s" % message.body)
-        except praw.exceptions.APIException as e:
-            if e.error_type == 'DELETED_COMMENT' in str(e):
-                print("Comment " + comment.id + " was deleted")
-            else:
-                print(e)
-
-#
+# TODO: Implement user exception list support
 #    if re.search('bot',str(author),re.IGNORECASE):
 #        userFlag="Bypass_Bot"
 
-
+# TODO: work on submission request processing
+"""
 def check_submission(submission):
     logger.info("submission: %s %s  user=%-20s http://reddit.com%s" % (time.strftime('%Y-%m-%d %H:%M:%S',
                                                                                      time.localtime(submission.created_utc)), submission.id, submission.author, submission.permalink))
@@ -165,7 +146,7 @@ def check_submission(submission):
     # elif userData[0] == "Local_Good":
     # elif userData[0] == "Local_New":
     # elif userData[0] == "Local_Low":
-
+"""
 
 # first check if we have recent data on the user in db
 def get_user_data_sql(Search_User, Search_Sub):
@@ -604,6 +585,7 @@ def check_comment(comment):
                   for x in Settings['SubSearchLists'][subname].split(',')]
     User_Score = get_user_score(authorname, subname, searchsubs)
     logger.debug("   user score: score=%s" % User_Score)
+    # TODO: Add actual processing logic based on user score
 
 # =============================================================================
 # MAIN
@@ -656,6 +638,7 @@ def main():
             comment_stream = subreddit.stream.comments(pause_after=-1)
             submission_stream = subreddit.stream.submissions(pause_after=-1)
 
+            # TODO: Process submssion stream
             # try:
             #  for submission in submission_stream:
             #    if submission is None:
