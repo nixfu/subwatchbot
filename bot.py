@@ -136,10 +136,6 @@ def create_db():
             con.close()
 
 
-# TODO: Implement user exception list support
-#    if re.search('bot',str(author),re.IGNORECASE):
-#        userFlag="Bypass_Bot"
-
 # TODO: work on submission request processing
 """
 def check_submission(submission):
@@ -625,16 +621,22 @@ def check_comment(comment):
     searchsubs = []
     subname = str(comment.subreddit).lower()
     authorname = str(comment.author)
+
+    # user exceptions
+    if re.search('bot',str(authorname),re.IGNORECASE):
+            logger.debug("    bot user skip")
     if 'userexceptions' in Settings['SubConfig'][subname]:
-        if authorname in Settings['SubConfig'][subname]['userexceptions']:
-            logger.debug("Sub userexceptions, skipping: %s" % authorname)
+        if authorname.lower() in (name.lower() for name in Settings['SubConfig'][subname]['userexceptions']):
+            logger.debug("    userexceptions, skipping: %s" % authorname)
             return
-    logger.debug("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime(
-        '%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
-    searchsubs = [x.strip()
-                  for x in Settings['SubSearchLists'][subname].split(',')]
+
+    logger.debug("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
+
+    # get user score
+    searchsubs = [x.strip() for x in Settings['SubSearchLists'][subname].split(',')]
     User_Score = get_user_score(authorname, subname, searchsubs)
     logger.debug("   user score=%s" % User_Score)
+    
     # TODO: Add actual processing logic based on user score
 
 
