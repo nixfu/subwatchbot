@@ -65,45 +65,48 @@ logger.propagate = False
 os.environ['TZ'] = 'US/Eastern'
 
 default_wiki_page_content='''---
----
-    ## Configuration for /u/subwatchbot -  note this file uses yaml syntax - this page should be unlisted, and set to view/edit by mods only
+    ## Configuration for /u/subwatchbot -  note this file uses yaml syntax - this wiki page should be unlisted, and set to view/edit by mods only
     ##
+    ## This bot requires at least the following moderator permissions:
+    ##    posts - to moderate submissions/comments
+    ##    access - to be able to ban users
+    ##    wiki - to be able to read the bot configuration wiki (THIS)page: /r/<subreddit>/wiki/subwatchbot
+    ##    mail (optional) - to be able to mute users in addition to banning them (optional if must_when_banned set to true)
+    #------------------------------------------------------------------------------------------------------------------------------------------------------#
     #- subsearchlist - (REQUIRED) this is the list of subreddits used to calculate the users score and filter users based on their activity in these subreddits
     #
     subsearchlist:
       - TrollSubreddit
       - OtherTrollSubreddit
-    #
+    #------------------------------------------------------------------------------------------------------------------------------------------------------#
+    #- mute_when_banned - (optional) false by default, the bot will also mute the user when they are banned, NOTE: REQUIRES moderator mail premission setting if enabled
     #- level_report - (optional) above this user score level a report will be generated to the modqueue (unless removed submission/comment is removed instead)
     #- level_remove - (optional) above this user score level the submission/comment will be auto-removed
     #- level_ban - (optional) above this user score level the submission/comment will trigger an automatic user ban
-    #- NOTE: the level settings work together, if a user score is above remove and above ban, the submission/comment will be removed AND the user will be banned, 
-    #-       if both the level_report and level_remove are triggered then the post will be removed and reported to modqueue for further review.  If level_remove is 
-    #-       set higher than level_remove, then posts between those ranges will be just reported to the modqueue but not removed.  
-    #- NOTE: these are optional settings, and the defaults are shown below.  An action such as bans can be disabled by setting to a very high number eg 999999.
-    #
+    #- NOTE: the level settings work together, some examples: if a user score is above remove and above ban, 
+    #        the submission/comment will be removed AND the user will be banned, if both the level_report and level_remove are triggered
+    #        then the post will be removed and reported to modqueue for further review.  If level_remove is 
+    #        set higher than level_report, then posts between those ranges will be just reported to the modqueue.
+    #- NOTE: An action such as bans can be disabled by setting to a very high number eg 999999.
     #level_report: 200
     #level_remove: 300
     #level_ban: 400
     #
-    #- The multipliers settings can be used to put more weight on comments or submissions if desired.  By default they are both=1 and counted equally.  A users
-    #- total score is calculated in the following manner: 
-    #- SCORE=(((count_of_comments) + (total_comment_karma) * comment_multiplier) + ((count_of_submissions + total_submission_karma) * submission_multiplier))
-    #- 
+    #------------------------------------------------------------------------------------------------------------------------------------------------------#
+    #- The multipliers settings can be used to put more weight on comments or submissions if desired.  By default they are both=1 and counted equally.  
     #- comment_multiplier - (optional) comment quantity and total comment karma found in the search subs is multiplied by this multiplier and added to the total score
     #- submission_multiplier - (optional) submission quantity and total karma found in search subs is multiplied by this multiplier and added to the total score
-    #  
     #comment_multiplier: 1
     #submission_multiplier: 1
     #
-    #- OTHER OPTIONS AVAILABLE
-    #- mute_when_banned - (optional) true by default the bot will also mute the user when they are banned
-    #
-    #mute_when_banned: false
+    #------------------------------------------------------------------------------------------------------------------------------------------------------#
+    #- mute_when_banned - (optional) false by default, the bot will also mute the user when they are banned, NOTE: REQUIRES moderator mail premission setting if enabled
+    #mute_when_banned: true
     # 
+    #------------------------------------------------------------------------------------------------------------------------------------------------------#
+    #- mute_when_banned - (optional) false by default, the bot will also mute the user when they are banned, NOTE: REQUIRES moderator mail premission setting if enabled
     #- userexceptions - (optional) if there is a user that has a score about the thresholds but no action should be taken, then add 
-    #-                  them to this list and the bot will bypass them
-    #
+    #-                          them to this list and the bot will bypass them
     #userexceptions:
     #   - UserOne
     #   - UserTwo
@@ -273,162 +276,9 @@ def build_multireddit_groups(subreddits):
     multireddits.append(current_multi)
     return multireddits
 
-
-def get_subreddit_settings(SubName):
-    # either use settings from wikipage or defaults from Config
-    wikidata = {}
-    Settings['SubConfig'][SubName] = {}
-    try:
-        wikipage = reddit.subreddit(
-            SubName).wiki[Settings['Config']['wikipage']]
-        wikidata = yaml.safe_load(wikipage.content_md)
-    except Exception:
-        # send_error_message(requester, subreddit.display_name,
-        #    'The wiki page could not be accessed. Please ensure the page '
-        #    'http://www.reddit.com/r/{0}/wiki/{1} exists and that {2} '
-        #    'has the "wiki" mod permission to be able to access it.'
-        #    .format(subreddit.display_name,
-        #            cfg_file.get('reddit', 'wiki_page_name'),
-        #            username))
-        logger.info("%s - No WikiPage" % SubName)
-
-    # use settings from subreddit wiki else use defaults
-    settingkeys = ['level_report', 'level_remove', 'level_ban', 'archive_modmail',
-                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier']
-    for key in settingkeys:
-        if key in wikidata:
-            Settings['SubConfig'][SubName][key] = wikidata[key]
-        elif key in Settings['Config']:
-            Settings['SubConfig'][SubName][key] = Settings['Config'][key]
-        else:
-            logger.error("Uknown key: %s" % key)
-
-    # create a sub search list for each subreddit
-    if 'subsearchlist' in wikidata:
-        #logger.debug("%s - Using Wiki SearchList: %s" % (SubName, wikidata['subsearchlist']))
-        Settings['SubConfig'][SubName]['subsearchlist'] = wikidata['subsearchlist']
-    elif SubName in Settings['SubSearchLists']:
-        #logger.debug("%s - Using config-sub SearchList: %s" % (SubName, Settings['SubSearchLists'][SubName]))
-        Settings['SubConfig'][SubName]['subsearchlist'] = [
-            x.strip() for x in Settings['SubSearchLists'][SubName].split(',')]
-    elif 'default' in Settings['SubSearchLists']:
-        #logger.debug("%s - Using config-default SearchList: %s" % (SubName, Settings['SubSearchLists']['default']))
-        Settings['SubConfig'][SubName]['subsearchlist'] = [
-            x.strip() for x in Settings['SubSearchLists']['default'].split(',')]
-    else:
-        Settings['SubConfig'][SubName]['subsearchlist'] = [
-            'chapotraphouse', 'chapotraphouse2']
-        logger.error("NO DEFAULT SubSearchList")
-
-
-def obtain_mod_permissions(subreddit_name):
-    """
-    A function to check if we have mod permissions in a subreddit, and what kind of mod permissions it has.
-    The important ones needed are: wiki - (optional) so that it can get configuration settings from the sub
-                                   posts - (optional)
-    Giving extra permissions does not matter as it will not use them.
-    More info: https://www.reddit.com/r/modhelp/wiki/mod_permissions
-    :param subreddit_name: Name of a subreddit.
-    :return: A tuple. First item is True/False on whether Artemis is a moderator. Second item is permissions, if any.
-    """
-
-    # TODO: check what perms are granted and set some config flags as well as more messages
-    am_moderator = False
-    my_permissions = None
-    # Get the list of moderators.
-    list_of_moderators = reddit.subreddit(subreddit_name).moderator()
-
-    # Iterate over the list of moderators to see if Artemis is in it.
-    for moderator in list_of_moderators:
-        if moderator == Settings['Reddit']['username']:  # This is me!
-            am_moderator = True  # Turns out, I am a moderator.
-            # Get the permissions I have as a list. e.g. `['wiki']`
-            my_permissions = moderator.mod_permissions
-
-    mod_log = 'Mod Permissions: Artemis r/{} moderator status is {}. Permissions are {}.'
-    logger.debug("%s Mod=%s Perms=%s" %
-                 (subreddit_name, am_moderator, my_permissions))
-    return am_moderator, my_permissions
-
-
-def accept_mod_invites():
-    logger.info("Run accept mod invites")
-
-    for message in reddit.inbox.unread(limit=20):
-        # pprint.pprint(repr(message))
-        message.mark_read()
-
-        # Get the variables of the message.
-        msg_subject = message.subject.lower()
-        msg_subreddit = message.subreddit
-
-        # Only accept PMs. This excludes, say, comment replies.
-        if not message.fullname.startswith('t4_'):
-            logger.debug('Messaging: Inbox item is not a message. Skipped.')
-            continue
-
-        # Reject non-subreddit messages. This includes messages from regular users.
-        if msg_subreddit is None:
-            logger.debug(
-                'Messaging: Message "{}" is not from a subreddit. Skipped.'.format(msg_subject))
-            continue
-
-        # This is an auto-generated moderation invitation message.
-        if 'invitation to moderate' in msg_subject:
-
-            # Accept the invitation to moderate.
-            logger.info(
-                "Messaging: New moderation invite from r/{}.".format(msg_subreddit))
-            try:
-                message.subreddit.mod.accept_invite()  # Accept the invite.
-                logger.info("Messaging: Invite accepted.")
-            except praw.exceptions.APIException:  # Invite already accepted error.
-                logger.error(
-                    "Messaging: Moderation invite error. Already accepted?")
-                continue
-            new_subreddit = message.subreddit.display_name.lower()
-
-            # Reply to the subreddit confirming the invite.
-            current_permissions = obtain_mod_permissions(str(msg_subreddit))
-            if current_permissions[0]:  # We are a moderator.
-                # Fetch the list of moderator permissions we have. This will be an empty list if we are a mod
-                # but has no actual permissions.
-                list_of_permissions = current_permissions[1]
-                if 'wiki' not in list_of_permissions:
-                    # We were invited to be a mod but don't have the proper permissions. Let the mods know.
-                    #message.reply(MSG_ACCEPT_WRONG_PERMISSIONS + BOT_DISCLAIMER.format(msg_subreddit))
-                    logger.info(
-                        "Messaging: I don't have the right wiki permissions. Replied to subreddit.")
-            else:
-                return  # Exit as we are not a moderator.
-
-
-#---- process functions ----#
-def check_comment(comment):
-    authorname = ""
-    subname = ""
-    searchsubs = []
-    subname = str(comment.subreddit).lower()
-
-
-def build_multireddit_groups(subreddits):
-    """Splits a subreddit list into groups if necessary (due to url length)."""
-    multireddits = []
-    current_multi = []
-    current_len = 0
-    for sub in subreddits:
-        if current_len > 3300:
-            multireddits.append(current_multi)
-            current_multi = []
-            current_len = 0
-        current_multi.append(sub)
-        current_len += len(sub) + 1
-    multireddits.append(current_multi)
-    return multireddits
-
 def create_default_wiki_page(SubName):
-    if SubName.lower() == 'QualitySocialism'.lower():
-            return
+    #if SubName.lower() == 'QualitySocialism'.lower():
+    #        return
     reddit.subreddit(SubName).wiki.create('subwatchbot', default_wiki_page_content, reason='Inital Settings Page Creation')
     reddit.subreddit(SubName).wiki['subwatchbot'].mod.update(listed=False,permlevel=2)
 
@@ -454,7 +304,7 @@ def get_subreddit_settings(SubName):
            create_default_wiki_page(SubName)
 
     # use settings from subreddit wiki else use defaults
-    settingkeys = ['level_warn', 'level_remove', 'level_ban', 'archive_modmail',
+    settingkeys = ['level_report', 'level_remove', 'level_ban', 'archive_modmail',
                    'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist']
     for key in settingkeys:
         if key in wikidata:
@@ -479,6 +329,7 @@ def get_subreddit_settings(SubName):
         Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
         logger.error("NO DEFAULT SubSearchList")
 
+    logger.debug("SETTINGS %s: %s" % (SubName, Settings['SubConfig'][SubName]))
 
 def obtain_mod_permissions(subreddit_name):
     """
@@ -585,32 +436,32 @@ def check_comment(comment):
     
     # Processing based on User_Score
     # 
-    if User_Score > Settings['SubConfig'][subname]['level_remove']:
+    if User_Score > int(Settings['SubConfig'][subname]['level_remove']):
         if comment.banned_by is not None:
             logger.info("    -Removed-ALREADY removed by %s" % comment.banned_by)
         else:
             logger.info("    +Removed")
-            comment.mod.remove()
+            ####comment.mod.remove()
     
-    if User_Score > Settings['SubConfig'][subname]['level_ban']:
+    if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
         # ban
         if comment.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
-            reddit.subreddit(subname).banned.add(comment.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+comment.permalink)
+            ####reddit.subreddit(subname).banned.add(comment.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+comment.permalink)
         else:
             logger.info("    -BAN User-ALREADY")
         # mute
         if Settings['SubConfig'][subname]['mute_when_banned']:
             if comment.author not in reddit.subreddit(subname).muted():
                 logger.info("    +MUTE User %s" % comment.author.id)
-                reddit.subreddit(subname).muted.add(comment.author)
+                ####reddit.subreddit(subname).muted.add(comment.author)
             else:
                 logger.info("    -MUTE User-ALREADY" )
 
     # elif because user was banned, then no need to report to modqueue for further review
-    elif User_Score > Settings['SubConfig'][subname]['level_report']:
+    elif User_Score > int(Settings['SubConfig'][subname]['level_report']):
         logger.info("    +Report to ModQueue")
-        comment.report('Possible Troll Post -- User Score=%s' % User_Score)
+        ####comment.report('Possible Troll Post -- User Score=%s' % User_Score)
 
 
 def check_submission(submission):
@@ -618,7 +469,7 @@ def check_submission(submission):
     subname = ""
     searchsubs = []
     subreddit = submission.subreddit
-    subname = str(submission.subreddit.name).lower()
+    subname = str(submission.subreddit.display_name).lower()
     authorname = str(submission.author)
 
     # user exceptions
@@ -639,36 +490,36 @@ def check_submission(submission):
     
     # Processing based on User_Score
     # 
-    if User_Score > Settings['SubConfig'][subname]['level_remove']:
+    if User_Score > int(Settings['SubConfig'][subname]['level_remove']):
         if submission.selftext == "[Removed]":
             logger.info("    -Remove-ALREADY by %s" % submission.selftext)
         elif submission.selftext == "[deleted]":
             logger.info("    -Remove-ALREADY by User Deleted %s" % submission.selftext)
         else:
             logger.info("    +Remove")
-            submission.mod.remove()
+            ####submission.mod.remove()
             logger.info("    +Lock")
-            submission.mod.lock()
+            ####submission.mod.lock()
    
-    if User_Score > Settings['SubConfig'][subname]['level_ban']:
+    if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
         # ban
         if submission.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
-            reddit.subreddit(subname).banned.add(submission.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+submission.permalink)
+            ####reddit.subreddit(subname).banned.add(submission.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+submission.permalink)
         else:
             logger.info("    -BAN User-ALREADY")
         # mute
         if Settings['SubConfig'][subname]['mute_when_banned']:
             if submission.author not in reddit.subreddit(subname).muted():
                 logger.info("    +MUTE User")
-                reddit.subreddit(subname).muted.add(submission.author)
+                ####reddit.subreddit(subname).muted.add(submission.author)
             else:
                 logger.info("    -MUTE User-ALREADY" )
 
     # elif because user was banned, then no need to report to modqueue for further review
-    elif User_Score > Settings['SubConfig'][subname]['level_report']:
+    elif User_Score > int(Settings['SubConfig'][subname]['level_report']):
         logger.info("    +Report to ModQueue")
-        submission.report('Possible Troll Post -- User Score=%s' % User_Score)
+        ####submission.report('Possible Troll Post -- User Score=%s' % User_Score)
 
 
 # =============================================================================
@@ -723,8 +574,8 @@ def main():
             comment_stream = subreddit.stream.comments(pause_after=-1)
             submission_stream = subreddit.stream.submissions(pause_after=-1)
 
-            # process submission stream
             try:
+              # process submission stream
               for submission in submission_stream:
                 if submission is None:
                    break
@@ -732,15 +583,15 @@ def main():
                    continue
                 else:
                    check_submission(submission)
-            # process comment stream
-            try:
-                for comment in comment_stream:
-                    if comment is None:
-                        break
-                    elif check_message_processed_sql(comment.id):
-                        continue
-                    else:
-                        check_comment(comment)
+
+              # process comment stream
+              for comment in comment_stream:
+                if comment is None:
+                   break
+                elif check_message_processed_sql(comment.id):
+                   continue
+                else:
+                   check_comment(comment)
 
             # Allows the bot to exit on ^C, all other exceptions are ignored
             except KeyboardInterrupt:
