@@ -354,6 +354,8 @@ def get_mod_permissions(subname):
         if 'access' not in my_permissions:
             logger.warning("%s Sub Permissions DOES NOT contain ACCCESS perms" % subname)
             am_moderator=0
+
+    # TODO: Send a message to the mods about incorrect permissions maybe
     return am_moderator, my_permissions
 
 
