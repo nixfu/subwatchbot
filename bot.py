@@ -14,16 +14,12 @@ from enum import Enum
 import praw
 import prawcore
 import operator
-#from datetime import datetime
-#from dateutil import relativedelta
 import random
 import yaml
 import re
 import requests
-#import datetime
 import sqlite3
 import pprint
-#import settings
 
 
 # =============================================================================
@@ -111,6 +107,7 @@ default_wiki_page_content='''---
     #   - UserOne
     #   - UserTwo
 '''
+
 # =============================================================================
 # FUNCTIONS
 # =============================================================================
@@ -322,7 +319,7 @@ def get_subreddit_settings(SubName):
         Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
         logger.error("%s NO DEFAULT SubSearchList" % SubName)
 
-    logger.debug("SETTINGS %s: %s" % (SubName, Settings['SubConfig'][SubName]))
+    logger.debug("%s SETTINGS %s" % (SubName, Settings['SubConfig'][SubName]))
 
 def get_mod_permissions(subname):
     am_moderator = False
@@ -337,12 +334,13 @@ def get_mod_permissions(subname):
             # Get the permissions I have as a list. e.g. `['wiki']`
             my_permissions = moderator.mod_permissions
 
-    logger.debug("%s Sub Permissions - Mod=%s Perms=%s" % (subname, am_moderator, my_permissions))
+    logger.debug("%s PERMS - Mod=%s Perms=%s" % (subname, am_moderator, my_permissions))
 
-    if "All" in my_permissions:
-        logger.debug("%s Sub Permissions = ALL" % subname)
+    if "all" in my_permissions:
+        #logger.debug("%s Sub Permissions = ALL" % subname)
+        pass
     else:
-        if mail not in my_permissions:
+        if 'mail' not in my_permissions:
             # make sure we overwide without mail perms
             Settings['SubConfig'][subname]['mute_when_banned'] = False
         if 'wiki' not in my_permissions:
@@ -383,7 +381,6 @@ def accept_mod_invites():
 
         # This is an auto-generated moderation invitation message.
         if 'invitation to moderate' in msg_subject:
-
             # Accept the invitation to moderate.
             logger.info(
                 "Messaging: New moderation invite from r/{}.".format(msg_subreddit))
@@ -399,10 +396,8 @@ def accept_mod_invites():
             # Reply to the subreddit confirming the invite.
             current_permissions = _mod_permissions(str(msg_subreddit))
             if not current_permissions[0]:  # We are not a moderator.
-                list_of_permissions = current_permissions[1]
-                logger.info("Messaging: I don't have the right mod permissions. Replied to subreddit.")
-                # reply to subreddit about permissions
-                reddit.subreddit(str(msg_subreddit).message("ATTN: Moderator permissions are not set correct for subwatchbot.  Current=%s Required=Access,Posts,Wiki" % current_permissions[1])
+                logger.error("I don't have the right mod permissions. Replied to subreddit.")
+                reddit.subreddit(str(msg_subreddit)).message("ATTN: Moderator permissions are not set correct for subwatchbot.  Current=%s Required=Access,Posts,Wiki" % current_permissions[1])
 
 def check_comment(comment):
     authorname = ""
