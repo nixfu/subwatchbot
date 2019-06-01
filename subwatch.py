@@ -20,6 +20,7 @@ import re
 import requests
 import sqlite3
 import pprint
+import json
 
 
 # =============================================================================
@@ -166,15 +167,26 @@ def get_user_data_sql(Search_User, Search_Sub):
 
 
 def get_author_comments(**kwargs):
-    r = requests.get(
-        "https://api.pushshift.io/reddit/comment/search/", params=kwargs)
-    data = r.json()
+    data = {}
+    try:
+        r = requests.get("https://api.pushshift.io/reddit/comment/search/", params=kwargs)
+        r.raise_for_status()
+        logger.debug("request status=%s" % r.status_code)
+        data = r.json()
+    except requests.exceptions.HTTPError as errh:
+        logger.error ("Http Error:",errh)
+    except requests.exceptions.ConnectionError as errc:
+        logger.error ("Error Connecting:",errc)
+    except requests.exceptions.Timeout as errt:
+        logger.error ("Timeout Error:",errt)
+    except requests.exceptions.RequestException as err:
+        logger.error ("OOps: Something Else",err)
     return data['data']
 
 
 def get_author_submissions(**swargs):
-    r = requests.get(
-        "https://api.pushshift.io/reddit/submission/search/", params=swargs)
+    r = requests.get("https://api.pushshift.io/reddit/submission/search/", params=swargs)
+    logger.debug("request status=%s" % r.status_code)
     data = r.json()
     return data['data']
 
@@ -190,6 +202,8 @@ def refresh_user_data(Search_User, Search_Sub):
     for comment in comments:
         total_comment_karma += comment['score']
         total_comment_count += 1
+    time.sleep(1)
+
     submissions = get_author_submissions(
         author=Search_User, size=1000, sort='desc', sort_type='created_utc', subreddit=Search_Sub)
     for submit in submissions:
@@ -394,7 +408,7 @@ def accept_mod_invites():
             new_subreddit = message.subreddit.display_name.lower()
 
             # Reply to the subreddit confirming the invite.
-            current_permissions = _mod_permissions(str(msg_subreddit))
+            current_permissions = get_mod_permissions(str(msg_subreddit))
             if not current_permissions[0]:  # We are not a moderator.
                 logger.error("I don't have the right mod permissions. Replied to subreddit.")
                 reddit.subreddit(str(msg_subreddit)).message("ATTN: Moderator permissions are not set correct for subwatchbot.  Current=%s Required=Access,Posts,Wiki" % current_permissions[1])
@@ -538,7 +552,7 @@ def main():
     next_refresh_time = 0
 
     while start_process and os.path.isfile(RUNNING_FILE):
-        logger.debug("Start Main Loop")
+        #logger.debug("Start Main Loop")
 
         # Only refresh sublists and wiki settings once an hour
         if int(round(time.time())) > next_refresh_time:
@@ -592,8 +606,7 @@ def main():
             except Exception as err:
                 logger.exception("Unknown Exception in Main Loop")
 
-        logger.debug("End Main Loop - Pause %s secs" %
-                     Settings['Config']['main_loop_pause_secs'])
+        #logger.debug("End Main Loop - Pause %s secs" % Settings['Config']['main_loop_pause_secs'])
         time.sleep(int(Settings['Config']['main_loop_pause_secs']))
 
     logger.info("end program")
