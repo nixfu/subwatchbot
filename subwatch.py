@@ -314,6 +314,10 @@ def get_subreddit_settings(SubName):
            logger.info("%s - No WikiPage - Creating Default" % SubName)
            create_default_wiki_page(SubName)
 
+    if not wikidata:
+            wikidata = {}
+            wikidata['empty'] = True
+
     # use settings from subreddit wiki else use defaults
     settingkeys = ['level_report', 'level_remove', 'level_ban', 'archive_modmail',
                    'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist']
