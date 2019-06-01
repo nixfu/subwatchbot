@@ -39,8 +39,8 @@ ENVIRONMENT = config.get("BOT", "environment")
 DEV_USER_NAME = config.get("BOT", "dev_user")
 RUNNING_FILE = "bot.pid"
 
-#LOG_LEVEL = logging.INFO
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
+#LOG_LEVEL = logging.DEBUG
 LOG_FILENAME = Settings['Config']['logfile']
 LOG_FILE_BACKUPCOUNT = 5
 LOG_FILE_MAXSIZE = 1024 * 256
@@ -376,7 +376,7 @@ def get_mod_permissions(subname):
 
 
 def accept_mod_invites():
-    logger.info("Run accept mod invites")
+    logger.debug("Run accept mod invites")
 
     for message in reddit.inbox.unread(limit=20):
         # pprint.pprint(repr(message))
@@ -438,7 +438,7 @@ def check_comment(comment):
     # get user score
     searchsubs = Settings['SubConfig'][subname]['subsearchlist']
     User_Score = get_user_score(authorname, subname, searchsubs)
-    logger.debug("   user score=%s" % User_Score)
+    logger.info("   user score=%s" % User_Score)
     
     # Processing based on User_Score
     # 
@@ -490,9 +490,9 @@ def check_submission(submission):
     logger.info("process submission: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(submission.created_utc)), submission.author, submission.permalink))
 
     # get user score
-    searchsubs = Settings['SubConfig'][SubName]['subsearchlist']
+    searchsubs = Settings['SubConfig'][subname]['subsearchlist']
     User_Score = get_user_score(authorname, subname, searchsubs)
-    logger.debug("   user score=%s" % User_Score)
+    logger.info("   user score=%s" % User_Score)
 
     
     # Processing based on User_Score
@@ -573,7 +573,7 @@ def main():
                         subList.append(SubName)
                 else: 
                     logger.warning("SKIPPING SUB %s due to incorrect permissions",)
-            logger.debug("subList: %s" % subList)
+            logger.info("subList: %s" % subList)
             next_refresh_time = int(
                 round(time.time())) + (60 * int(Settings['Config']['config_refresh_mins']))
             logger.info("REFRESH Completed")
