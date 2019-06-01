@@ -335,7 +335,7 @@ def get_subreddit_settings(SubName):
         pass
     else:
         Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
-        logger.error("%s NO DEFAULT SubSearchList" % SubName)
+        logger.debug("%s NO DEFAULT SubSearchList" % SubName)
 
     logger.debug("%s SETTINGS %s" % (SubName, Settings['SubConfig'][SubName]))
 
