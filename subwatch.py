@@ -297,6 +297,7 @@ def get_subreddit_settings(SubName):
     # either use settings from wikipage or defaults from Config
     wikidata = {}
     Settings['SubConfig'][SubName] = {}
+    Settings['SubConfig'][SubName]['userexceptions'] = []
     try:
         wikipage = reddit.subreddit(
             SubName).wiki[Settings['Config']['wikipage']]
@@ -326,8 +327,6 @@ def get_subreddit_settings(SubName):
             Settings['SubConfig'][SubName][key] = wikidata[key]
         elif key in Settings['Config']:
             Settings['SubConfig'][SubName][key] = Settings['Config'][key]
-        elif key not in settingkeys:
-            logger.error("Uknown key: %s" % key)
 
     # create a sub search list for each subreddit
     if 'subsearchlist' in wikidata:
@@ -348,6 +347,9 @@ def get_mod_permissions(subname):
     # Iterate over the list of moderators to see if we are in the list
     for moderator in list_of_moderators:
         if moderator == Settings['Reddit']['username']:  # This is me!
+            # add the mods to the exception list
+            Settings['SubConfig'][subname]['userexceptions'] += [moderator]
+
             am_moderator = True  # Turns out, I am a moderator, whoohoo
             # Get the permissions I have as a list. e.g. `['wiki']`
             my_permissions = moderator.mod_permissions
@@ -428,6 +430,9 @@ def check_comment(comment):
     if re.search('bot',str(authorname),re.IGNORECASE):
             logger.debug("    bot user skip")
             return
+    if authorname.lower() == "automoderator":
+            logger.debug("    bot user skip")
+            return
     if 'userexceptions' in Settings['SubConfig'][subname]:
         if authorname.lower() in (name.lower() for name in Settings['SubConfig'][subname]['userexceptions']):
             logger.debug("    userexceptions, skipping: %s" % authorname)
@@ -480,6 +485,9 @@ def check_submission(submission):
 
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
+            logger.debug("    bot user skip")
+            return
+    if authorname.lower() == "automoderator":
             logger.debug("    bot user skip")
             return
     if 'userexceptions' in Settings['SubConfig'][subname]:
