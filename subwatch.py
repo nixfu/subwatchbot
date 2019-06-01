@@ -171,7 +171,8 @@ def get_author_comments(**kwargs):
     try:
         r = requests.get("https://api.pushshift.io/reddit/comment/search/", params=kwargs)
         r.raise_for_status()
-        logger.debug("request status=%s" % r.status_code)
+        if not r.status.code == 200:
+            logger.debug("request status=%s" % r.status_code)
         data = r.json()
     except requests.exceptions.HTTPError as errh:
         logger.error ("Http Error:",errh)
@@ -186,7 +187,9 @@ def get_author_comments(**kwargs):
 
 def get_author_submissions(**swargs):
     r = requests.get("https://api.pushshift.io/reddit/submission/search/", params=swargs)
-    logger.debug("request status=%s" % r.status_code)
+    r.raise_for_status()
+    if not r.status.code == 200:
+        logger.debug("request status=%s" % r.status_code)
     data = r.json()
     return data['data']
 
@@ -428,19 +431,20 @@ def check_comment(comment):
     subname = str(comment.subreddit).lower()
     authorname = str(comment.author.name)
 
+    logger.info("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
+
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
-            logger.debug("    bot user skip")
+            logger.info("   bot user skip")
             return
     if authorname.lower() == "automoderator":
-            logger.debug("    bot user skip")
+            logger.info("   bot user skip")
             return
     if 'userexceptions' in Settings['SubConfig'][subname]:
         if authorname.lower() in (name.lower() for name in Settings['SubConfig'][subname]['userexceptions']):
-            logger.debug("    userexceptions, skipping: %s" % authorname)
+            logger.info("   userexceptions, skipping: %s" % authorname)
             return
 
-    logger.info("process comment: %s %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
 
     # get user score
     searchsubs = Settings['SubConfig'][subname]['subsearchlist']
