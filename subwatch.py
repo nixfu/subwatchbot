@@ -39,8 +39,8 @@ ENVIRONMENT = config.get("BOT", "environment")
 DEV_USER_NAME = config.get("BOT", "dev_user")
 RUNNING_FILE = "bot.pid"
 
-LOG_LEVEL = logging.INFO
-#LOG_LEVEL = logging.DEBUG
+#LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 LOG_FILENAME = Settings['Config']['logfile']
 LOG_FILE_BACKUPCOUNT = 5
 LOG_FILE_MAXSIZE = 1024 * 256
@@ -328,6 +328,11 @@ def get_subreddit_settings(SubName):
         elif key in Settings['Config']:
             Settings['SubConfig'][SubName][key] = Settings['Config'][key]
 
+    # append the subs moderators to user exction list for the sub
+    for moderator in reddit.subreddit(SubName).moderator():
+        if moderator.name not in  Settings['SubConfig'][SubName]['userexceptions']:  # This is me!
+            Settings['SubConfig'][SubName]['userexceptions'] += [moderator.name]
+
     # create a sub search list for each subreddit
     if 'subsearchlist' in wikidata:
         #logger.debug("%s - Using Wiki SearchList: %s" % (SubName, wikidata['subsearchlist']))
@@ -338,39 +343,36 @@ def get_subreddit_settings(SubName):
 
     logger.debug("%s SETTINGS %s" % (SubName, Settings['SubConfig'][SubName]))
 
-def get_mod_permissions(subname):
+def get_mod_permissions(SubName):
     am_moderator = False
     my_permissions = None
     # Get the list of moderators.
-    list_of_moderators = reddit.subreddit(subname).moderator()
+    list_of_moderators = reddit.subreddit(SubName).moderator()
 
     # Iterate over the list of moderators to see if we are in the list
     for moderator in list_of_moderators:
         if moderator == Settings['Reddit']['username']:  # This is me!
-            # add the mods to the exception list
-            Settings['SubConfig'][subname]['userexceptions'] += [moderator]
-
             am_moderator = True  # Turns out, I am a moderator, whoohoo
             # Get the permissions I have as a list. e.g. `['wiki']`
             my_permissions = moderator.mod_permissions
 
-    logger.debug("%s PERMS - Mod=%s Perms=%s" % (subname, am_moderator, my_permissions))
+    logger.debug("%s PERMS - Mod=%s Perms=%s" % (SubName, am_moderator, my_permissions))
 
     if "all" in my_permissions:
-        #logger.debug("%s Sub Permissions = ALL" % subname)
+        #logger.debug("%s Sub Permissions = ALL" % SubName)
         pass
     else:
         if 'mail' not in my_permissions:
             # make sure we overwide without mail perms
-            Settings['SubConfig'][subname]['mute_when_banned'] = False
+            Settings['SubConfig'][SubName]['mute_when_banned'] = False
         if 'wiki' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain WIKI perms" % subname)
+            logger.warning("%s Sub Permissions DOES NOT contain WIKI perms" % SubName)
             am_moderator=0
         if 'posts' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain POSTS perms" % subname)
+            logger.warning("%s Sub Permissions DOES NOT contain POSTS perms" % SubName)
             am_moderator=0
         if 'access' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain ACCCESS perms" % subname)
+            logger.warning("%s Sub Permissions DOES NOT contain ACCCESS perms" % SubName)
             am_moderator=0
 
     # TODO: Send a message to the mods about incorrect permissions maybe
@@ -424,7 +426,7 @@ def check_comment(comment):
     subname = ""
     searchsubs = []
     subname = str(comment.subreddit).lower()
-    authorname = str(comment.author)
+    authorname = str(comment.author.name)
 
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
