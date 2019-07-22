@@ -368,16 +368,16 @@ def get_mod_permissions(SubName):
     else:
         if 'mail' not in my_permissions:
             # make sure we overwide without mail perms
+            logger.warning("%s Sub Permissions DOES NOT contain MAIL perms. Setting level_report=0" % SubName)
             Settings['SubConfig'][SubName]['mute_when_banned'] = False
         if 'wiki' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain WIKI perms" % SubName)
-            am_moderator=0
+            logger.warning("%s Sub Permissions DOES NOT contain WIKI perms." % SubName)
         if 'posts' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain POSTS perms" % SubName)
-            am_moderator=0
+            logger.warning("%s Sub Permissions DOES NOT contain POSTS perms. Setting level_remove=0" % SubName)
+            Settings['SubConfig'][SubName]['level_remove'] = 0
         if 'access' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain ACCCESS perms" % SubName)
-            am_moderator=0
+            logger.warning("%s Sub Permissions DOES NOT contain ACCCESS perms. Setting level_ban=0" % SubName)
+            Settings['SubConfig'][SubName]['level_ban'] = 0
 
     # TODO: Send a message to the mods about incorrect permissions maybe
     return am_moderator, my_permissions
@@ -460,7 +460,7 @@ def append_to_automoderator(SubName, NewUser, UserScore):
             else:
                 read_users=0
                 if NewUser.lower() not in userlist:
-                    userlist.append("%s # UserScore=%s" % (NewUser.lower(), UserScore)
+                    userlist.append("%s # UserScore=%s" % (NewUser.lower(), UserScore))
                 else:
                     logger.info("USER already in list: %s, skipping" % NewUser)
                     return
@@ -483,7 +483,7 @@ def append_to_automoderator(SubName, NewUser, UserScore):
 
     # Update the automoderator config
     try:
-        wikipage.edit(newconfigdata, reason='SUBWATCHBOT added: %s UserScore=%s' % newuser.lower(), UserScore)
+        wikipage.edit(newconfigdata, reason='SUBWATCHBOT added: %s UserScore=%s' % (newuser.lower(), UserScore))
         logger.info("Updated automod config")
     except Exception as err:
         logger.warning("Could not edit automod config, skipping")
