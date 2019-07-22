@@ -520,17 +520,17 @@ def check_comment(comment):
     
     # Processing based on User_Score
     # 
-    if User_Score > int(Settings['SubConfig'][subname]['level_remove']):
+    if User_Score > int(Settings['SubConfig'][subname]['level_remove']) and int(Settings['SubConfig'][subname]['level_remove']) > 0:
         if comment.banned_by is not None:
             logger.info("    -Removed-ALREADY removed by %s" % comment.banned_by)
         else:
             logger.info("    +Removed")
             comment.mod.remove()
 
-    if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']):
+    if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
        append_to_automoderator(subname, authorname)
     
-    if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
+    if User_Score > int(Settings['SubConfig'][subname]['level_ban']) and int(Settings['SubConfig'][subname]['level_ban']) > 0:
         # ban
         if comment.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
@@ -546,7 +546,7 @@ def check_comment(comment):
                 logger.info("    -MUTE User-ALREADY" )
 
     # elif because user was banned, then no need to report to modqueue for further review
-    elif User_Score > int(Settings['SubConfig'][subname]['level_report']):
+    elif User_Score > int(Settings['SubConfig'][subname]['level_report']) and int(Settings['SubConfig'][subname]['level_report']) > 0:
         logger.info("    +Report to ModQueue")
         comment.report('Possible Troll Post -- User Score=%s' % User_Score)
 
@@ -581,7 +581,7 @@ def check_submission(submission):
     
     # Processing based on User_Score
     # 
-    if User_Score > int(Settings['SubConfig'][subname]['level_remove']):
+    if User_Score > int(Settings['SubConfig'][subname]['level_remove']) and int(Settings['SubConfig'][subname]['level_remove']) > 0:
         if submission.selftext == "[Removed]":
             logger.info("    -Remove-ALREADY by %s" % submission.selftext)
         elif submission.selftext == "[deleted]":
@@ -592,10 +592,10 @@ def check_submission(submission):
             logger.info("    +Lock")
             submission.mod.lock()
 
-    if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']):
+    if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
         append_to_automoderator(subname, authorname)
    
-    if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
+    if User_Score > int(Settings['SubConfig'][subname]['level_ban']) and User_Score > int(Settings['SubConfig'][subname]['level_ban']) > 0:
         # ban
         if submission.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
@@ -611,7 +611,7 @@ def check_submission(submission):
                 logger.info("    -MUTE User-ALREADY" )
 
     # elif because user was banned, then no need to report to modqueue for further review
-    elif User_Score > int(Settings['SubConfig'][subname]['level_report']):
+    elif User_Score > int(Settings['SubConfig'][subname]['level_report']) and int(Settings['SubConfig'][subname]['level_report']) > 0:
         logger.info("    +Report to ModQueue")
         submission.report('Possible Troll Post -- User Score=%s' % User_Score)
 
