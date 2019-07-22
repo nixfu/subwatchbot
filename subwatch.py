@@ -39,8 +39,8 @@ ENVIRONMENT = config.get("BOT", "environment")
 DEV_USER_NAME = config.get("BOT", "dev_user")
 RUNNING_FILE = "bot.pid"
 
-#LOG_LEVEL = logging.INFO
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
+#LOG_LEVEL = logging.DEBUG
 LOG_FILENAME = Settings['Config']['logfile']
 LOG_FILE_BACKUPCOUNT = 5
 LOG_FILE_MAXSIZE = 1024 * 256
@@ -69,6 +69,7 @@ default_wiki_page_content='''---
     ##    access - to be able to ban users
     ##    wiki - to be able to read the bot configuration wiki (THIS)page: /r/<subreddit>/wiki/subwatchbot
     ##    mail (optional) - to be able to mute users in addition to banning them (optional if must_when_banned set to true)
+    ##    config (optional) - to be able to append users to the list in the automoderator rule (OR add perms just to config/automoderator page settings)
     #------------------------------------------------------------------------------------------------------------------------------------------------------#
     #- subsearchlist - (REQUIRED) this is the list of subreddits used to calculate the users score and filter users based on their activity in these subreddits
     #
@@ -80,6 +81,7 @@ default_wiki_page_content='''---
     #- level_report - (optional) above this user score level a report will be generated to the modqueue (unless removed submission/comment is removed instead)
     #- level_remove - (optional) above this user score level the submission/comment will be auto-removed
     #- level_ban - (optional) above this user score level the submission/comment will trigger an automatic user ban
+    #- level_automoderator - (optional) above this user score level the submission/comment will trigger an append to the automoderator rule
     #- NOTE: the level settings work together, some examples: if a user score is above remove and above ban, 
     #        the submission/comment will be removed AND the user will be banned, if both the level_report and level_remove are triggered
     #        then the post will be removed and reported to modqueue for further review.  If level_remove is 
@@ -87,7 +89,11 @@ default_wiki_page_content='''---
     #- NOTE: An action such as bans can be disabled by setting to a very high number eg 999999.
     #level_report: 200
     #level_remove: 300
-    #level_ban: 400
+    #level_automoderator: 400
+    #level_ban: 600
+    #
+    # - NOTE ABOUT AUTOMODERATOR: this requires an automoderator rule to be added which follows a specific format.  See the help on /ur/subwatchbot for more info.
+    #
     #
     #------------------------------------------------------------------------------------------------------------------------------------------------------#
     #- The multipliers settings can be used to put more weight on comments or submissions if desired.  By default they are both=1 and counted equally.  
@@ -170,9 +176,6 @@ def get_author_comments(**kwargs):
     data = {}
     try:
         r = requests.get("https://api.pushshift.io/reddit/comment/search/", params=kwargs)
-        r.raise_for_status()
-        if not r.status.code == 200:
-            logger.debug("request status=%s" % r.status_code)
         data = r.json()
     except requests.exceptions.HTTPError as errh:
         logger.error ("Http Error:",errh)
@@ -187,9 +190,6 @@ def get_author_comments(**kwargs):
 
 def get_author_submissions(**swargs):
     r = requests.get("https://api.pushshift.io/reddit/submission/search/", params=swargs)
-    r.raise_for_status()
-    if not r.status.code == 200:
-        logger.debug("request status=%s" % r.status_code)
     data = r.json()
     return data['data']
 
@@ -302,9 +302,10 @@ def get_subreddit_settings(SubName):
     Settings['SubConfig'][SubName] = {}
     Settings['SubConfig'][SubName]['userexceptions'] = []
     try:
-        wikipage = reddit.subreddit(
-            SubName).wiki[Settings['Config']['wikipage']]
+        wikipage = reddit.subreddit(SubName).wiki[Settings['Config']['wikipage']]
         wikidata = yaml.safe_load(wikipage.content_md)
+    except prawcore.exceptions.Forbidden:
+        logger.error("# wiki permission denied for sub: %s", SubName)
     except Exception:
         # send_error_message(requester, subreddit.display_name,
         #    'The wiki page could not be accessed. Please ensure the page '
@@ -323,8 +324,8 @@ def get_subreddit_settings(SubName):
             wikidata['empty'] = True
 
     # use settings from subreddit wiki else use defaults
-    settingkeys = ['level_report', 'level_remove', 'level_ban', 'archive_modmail',
-                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist']
+    settingkeys = ['level_report', 'level_remove', 'level_ban', 'level_automoderator', 'archive_modmail',
+                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist', 'use_automoderator']
     for key in settingkeys:
         if key in wikidata:
             Settings['SubConfig'][SubName][key] = wikidata[key]
@@ -338,7 +339,7 @@ def get_subreddit_settings(SubName):
 
     # create a sub search list for each subreddit
     if 'subsearchlist' in wikidata:
-        #logger.debug("%s - Using Wiki SearchList: %s" % (SubName, wikidata['subsearchlist']))
+        logger.info("%s - Using Wiki SearchList: %s" % (SubName, wikidata['subsearchlist']))
         pass
     else:
         Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
@@ -424,6 +425,72 @@ def accept_mod_invites():
                 logger.error("I don't have the right mod permissions. Replied to subreddit.")
                 reddit.subreddit(str(msg_subreddit)).message("ATTN: Moderator permissions are not set correct for subwatchbot.  Current=%s Required=Access,Posts,Wiki" % current_permissions[1])
 
+def append_to_automoderator(SubName, NewUser):
+    wikidata = {}
+    Settings['SubConfig'][SubName] = {}
+    Settings['SubConfig'][SubName]['userexceptions'] = []
+    try:
+        wikipage = reddit.subreddit(SubName).wiki['config/automoderator']
+    except prawcore.exceptions.Forbidden:
+        logger.error("# automod config permission denied for sub: %s", SubName)
+    except Exception:
+        logger.error("# MAYBE automod config permission denied for sub: %s", SubName)
+
+    if not wikipage.may_revise:
+        logger.error ("ATTN: We do not have perms to change automoderator config.  Aboring.")
+        return
+
+    automodconfigdata=wikipage.content_md
+    newconfigdata=""
+    header_found=0
+    read_users=0
+    userlist = []
+
+    # Step through the current automoderator config and read in list of users, then output a new sorted list
+    for line in automodconfigdata.splitlines():
+        if "#### SUBWATCHBOT" in line:
+            header_found=1
+            read_users=1
+            newconfigdata += "%s\n" % line
+            offset=line.find("#")
+        elif read_users == 1:
+            if re.search(r'\s-', line):
+                x = line.split("-")
+                userlist.append(x[1].strip())
+            else:
+                read_users=0
+                if NewUser.lower() not in userlist:
+                    userlist.append(NewUser.lower())
+                else:
+                    logger.info("USER already in list: %s, skipping" % NewUser)
+                    return
+
+                userlistsorted=sorted(userlist)
+                for outputuser in userlistsorted:
+                    for i in range(0, offset):
+                        newconfigdata += ' '
+                    newconfigdata += '- %s\n' % outputuser
+        else:
+            newconfigdata += "%s\n" % line
+
+    if header_found == 0:
+        logger.debug("ERROR: could NOT FIND  ##### SUBWATCHBOT line in automoderatorconfig")
+        return
+
+    # DEBUG
+    #for newline in newconfigdata.splitlines():
+    #    print ("NEW: %s" % newline)
+
+    # Update the automoderator config
+    try:
+        wikipage.edit(newconfigdata, reason='SUBWATCHBOT added: %s' % newuser)
+        logger.info("Updated automod config")
+    except Exception as err:
+        logger.warning("Could not edit automod config, skipping")
+
+    return
+                
+
 def check_comment(comment):
     authorname = ""
     subname = ""
@@ -459,6 +526,9 @@ def check_comment(comment):
         else:
             logger.info("    +Removed")
             comment.mod.remove()
+
+    if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']):
+       append_to_automoderator(subname, authorname)
     
     if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
         # ban
@@ -521,6 +591,9 @@ def check_submission(submission):
             submission.mod.remove()
             logger.info("    +Lock")
             submission.mod.lock()
+
+    if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']):
+        append_to_automoderator(subname, authorname)
    
     if User_Score > int(Settings['SubConfig'][subname]['level_ban']):
         # ban
@@ -574,7 +647,7 @@ def main():
 
         # Only refresh sublists and wiki settings once an hour
         if int(round(time.time())) > next_refresh_time:
-            logger.info("REFRESH Start")
+            logger.debug("REFRESH Start")
             accept_mod_invites()
             subList = []
             for subs in reddit.user.moderator_subreddits():
@@ -586,7 +659,7 @@ def main():
                     if 'subsearchlist' in Settings['SubConfig'][SubName]:
                         subList.append(SubName)
                 else: 
-                    logger.warning("SKIPPING SUB %s due to incorrect permissions",)
+                    logger.warning("SKIPPING SUB %s due to incorrect permissions", SubName)
             logger.info("subList: %s" % subList)
             next_refresh_time = int(
                 round(time.time())) + (60 * int(Settings['Config']['config_refresh_mins']))
