@@ -425,7 +425,7 @@ def accept_mod_invites():
                 logger.error("I don't have the right mod permissions. Replied to subreddit.")
                 reddit.subreddit(str(msg_subreddit)).message("ATTN: Moderator permissions are not set correct for subwatchbot.  Current=%s Required=Access,Posts,Wiki" % current_permissions[1])
 
-def append_to_automoderator(SubName, NewUser):
+def append_to_automoderator(SubName, NewUser, UserScore):
     wikidata = {}
     Settings['SubConfig'][SubName] = {}
     Settings['SubConfig'][SubName]['userexceptions'] = []
@@ -460,7 +460,7 @@ def append_to_automoderator(SubName, NewUser):
             else:
                 read_users=0
                 if NewUser.lower() not in userlist:
-                    userlist.append(NewUser.lower())
+                    userlist.append("%s # UserScore=%s" % (NewUser.lower(), UserScore)
                 else:
                     logger.info("USER already in list: %s, skipping" % NewUser)
                     return
@@ -483,7 +483,7 @@ def append_to_automoderator(SubName, NewUser):
 
     # Update the automoderator config
     try:
-        wikipage.edit(newconfigdata, reason='SUBWATCHBOT added: %s' % newuser)
+        wikipage.edit(newconfigdata, reason='SUBWATCHBOT added: %s UserScore=%s' % newuser.lower(), UserScore)
         logger.info("Updated automod config")
     except Exception as err:
         logger.warning("Could not edit automod config, skipping")
@@ -528,7 +528,7 @@ def check_comment(comment):
             comment.mod.remove()
 
     if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
-       append_to_automoderator(subname, authorname)
+       append_to_automoderator(subname, authorname, User_Score)
     
     if User_Score > int(Settings['SubConfig'][subname]['level_ban']) and int(Settings['SubConfig'][subname]['level_ban']) > 0:
         # ban
@@ -593,7 +593,7 @@ def check_submission(submission):
             submission.mod.lock()
 
     if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
-        append_to_automoderator(subname, authorname)
+        append_to_automoderator(subname, authorname, User_Score)
    
     if User_Score > int(Settings['SubConfig'][subname]['level_ban']) and User_Score > int(Settings['SubConfig'][subname]['level_ban']) > 0:
         # ban
@@ -659,7 +659,7 @@ def main():
                     if 'subsearchlist' in Settings['SubConfig'][SubName]:
                         subList.append(SubName)
                 else: 
-                    logger.warning("SKIPPING SUB %s due to incorrect permissions", SubName)
+                    logger.warning("SKIPPING SUB %s due to no moderator permissions", SubName)
             logger.info("subList: %s" % subList)
             next_refresh_time = int(
                 round(time.time())) + (60 * int(Settings['Config']['config_refresh_mins']))
