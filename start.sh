@@ -1,12 +1,12 @@
 #!/bin/bash
 export EDITOR=vi
 export PIP_USER=yes
-export PATH=/home/redditbot/.local/bin:$PATH
+export PATH=/home/myredditbot/.local/bin:$PATH
 alias startwatch="cd ~/github/bots/subwatchbot;/usr/bin/screen -dmS subwatch python3 subwatch.py"
 alias watchlog="tail -f ~/github/bots/subwatchbot/bot.log"
 alias watchstatus="ps -ef|grep subwatch.py |grep -v grep"
 
-BOTDIR="/home/redditbot/github/bots/subwatchbot"
+BOTDIR="/home/myredditbot/github/bots/subwatchbot"
 cd $BOTDIR
 
 export TZ=EST5EDT

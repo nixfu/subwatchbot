@@ -305,7 +305,7 @@ def get_subreddit_settings(SubName):
         wikipage = reddit.subreddit(SubName).wiki[Settings['Config']['wikipage']]
         wikidata = yaml.safe_load(wikipage.content_md)
     except prawcore.exceptions.Forbidden:
-        logger.error("# wiki permission denied for sub: %s", SubName)
+        logger.debug("# wiki permission denied for sub: %s", SubName)
     except Exception:
         # send_error_message(requester, subreddit.display_name,
         #    'The wiki page could not be accessed. Please ensure the page '
@@ -325,7 +325,7 @@ def get_subreddit_settings(SubName):
 
     # use settings from subreddit wiki else use defaults
     settingkeys = ['level_report', 'level_remove', 'level_ban', 'level_automoderator', 'archive_modmail',
-                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist', 'use_automoderator']
+                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist', 'use_automoderator', 'TotesMessenger']
     for key in settingkeys:
         if key in wikidata:
             Settings['SubConfig'][SubName][key] = wikidata[key]
@@ -343,7 +343,7 @@ def get_subreddit_settings(SubName):
         pass
     else:
         Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
-        logger.debug("%s NO DEFAULT SubSearchList" % SubName)
+        logger.info("%s NO DEFAULT SubSearchList" % SubName)
 
     logger.debug("%s SETTINGS %s" % (SubName, Settings['SubConfig'][SubName]))
 
@@ -368,15 +368,15 @@ def get_mod_permissions(SubName):
     else:
         if 'mail' not in my_permissions:
             # make sure we overwide without mail perms
-            logger.warning("%s Sub Permissions DOES NOT contain MAIL perms. Setting level_report=0" % SubName)
+            logger.debug("%s Sub Permissions DOES NOT contain MAIL perms. Setting level_report=0" % SubName)
             Settings['SubConfig'][SubName]['mute_when_banned'] = False
         if 'wiki' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain WIKI perms." % SubName)
+            logger.debug("%s Sub Permissions DOES NOT contain WIKI perms." % SubName)
         if 'posts' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain POSTS perms. Setting level_remove=0" % SubName)
+            logger.debug("%s Sub Permissions DOES NOT contain POSTS perms. Setting level_remove=0" % SubName)
             Settings['SubConfig'][SubName]['level_remove'] = 0
         if 'access' not in my_permissions:
-            logger.warning("%s Sub Permissions DOES NOT contain ACCCESS perms. Setting level_ban=0" % SubName)
+            logger.debug("%s Sub Permissions DOES NOT contain ACCCESS perms. Setting level_ban=0" % SubName)
             Settings['SubConfig'][SubName]['level_ban'] = 0
 
     # TODO: Send a message to the mods about incorrect permissions maybe
@@ -530,7 +530,7 @@ def check_comment(comment):
     if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
        append_to_automoderator(subname, authorname, User_Score)
     
-    if User_Score > int(Settings['SubConfig'][subname]['level_ban']) and int(Settings['SubConfig'][subname]['level_ban']) > 0:
+    if int(Settings['SubConfig'][subname]['level_ban']) > 0 and int(User_Score) > int(Settings['SubConfig'][subname]['level_ban']):
         # ban
         if comment.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
@@ -594,8 +594,8 @@ def check_submission(submission):
 
     if User_Score > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
         append_to_automoderator(subname, authorname, User_Score)
-   
-    if User_Score > int(Settings['SubConfig'][subname]['level_ban']) and User_Score > int(Settings['SubConfig'][subname]['level_ban']) > 0:
+
+    if User_Score > int(Settings['SubConfig'][subname]['level_ban']) and int(Settings['SubConfig'][subname]['level_ban']) > 0:
         # ban
         if submission.author not in reddit.subreddit(subname).banned():
             logger.info("    +BAN User")
