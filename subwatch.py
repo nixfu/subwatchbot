@@ -42,8 +42,9 @@ RUNNING_FILE = "bot.pid"
 LOG_LEVEL = logging.INFO
 #LOG_LEVEL = logging.DEBUG
 LOG_FILENAME = Settings['Config']['logfile']
+LOG_FILE_INTERVAL = 2
 LOG_FILE_BACKUPCOUNT = 5
-LOG_FILE_MAXSIZE = 20000 * 256
+LOG_FILE_MAXSIZE = 5000 * 256
 
 logger = logging.getLogger('bot')
 logger.setLevel(LOG_LEVEL)
@@ -54,8 +55,8 @@ log_stderrHandler = logging.StreamHandler()
 log_stderrHandler.setFormatter(log_formatter)
 logger.addHandler(log_stderrHandler)
 if LOG_FILENAME:
-    log_fileHandler = logging.handlers.RotatingFileHandler(
-        LOG_FILENAME, maxBytes=LOG_FILE_MAXSIZE, backupCount=LOG_FILE_BACKUPCOUNT)
+    #log_fileHandler = logging.handlers.RotatingFileHandler(LOG_FILENAME, maxBytes=LOG_FILE_MAXSIZE, backupCount=LOG_FILE_BACKUPCOUNT)
+    log_fileHandler = logging.handlers.TimedRotatingFileHandler(LOG_FILENAME, when='d', interval=LOG_FILE_INTERVAL, backupCount=LOG_FILE_BACKUPCOUNT) 
     log_fileHandler.setFormatter(log_formatter)
     logger.addHandler(log_fileHandler)
 logger.propagate = False
@@ -320,7 +321,7 @@ def get_subreddit_settings(SubName):
         #            username))
         # create a default wiki page and set to be unlisted and mod edit only
         if not SubName.lower() == 'u_subwatchbot':
-           logger.info("%s - No WikiPage - Creating Default" % SubName)
+           logger.error("%-20s - No WikiPage - Creating Default" % SubName)
            create_default_wiki_page(SubName)
 
     if not wikidata:
@@ -432,6 +433,7 @@ def append_to_automoderator(SubName, NewUser, UserScore):
     wikidata = {}
     Settings['SubConfig'][SubName] = {}
     Settings['SubConfig'][SubName]['userexceptions'] = []
+    logger.info("# Appending %s to automod list in %s" % (NewUser, SubName))
     try:
         wikipage = reddit.subreddit(SubName).wiki['config/automoderator']
     except prawcore.exceptions.Forbidden:
@@ -451,7 +453,8 @@ def append_to_automoderator(SubName, NewUser, UserScore):
 
     # Step through the current automoderator config and read in list of users, then output a new sorted list
     for line in automodconfigdata.splitlines():
-        if "#### SUBWATCHBOT" in line:
+        if re.search("####\sSUBWATCH\sBOT",line):
+            logger.debug("- FOUND #SUBWATCHBOT header line")
             header_found=1
             read_users=1
             newconfigdata += "%s\n" % line
@@ -464,9 +467,9 @@ def append_to_automoderator(SubName, NewUser, UserScore):
                 read_users=0
                 if NewUser.lower() not in userlist:
                     userlist.append("%s # UserScore=%s" % (NewUser.lower(), UserScore))
-                    logger.info("%s: USER %s APPEND to automoderator list" % (SubName, NewUser))
+                    logger.info("%-20s: USER %s APPEND to automoderator list" % (SubName, NewUser))
                 else:
-                    logger.info("%s: USER %s APPEND - already in list, skipping" % (SubName, NewUser))
+                    logger.info("%-20s: USER %s APPEND - already in list, skipping" % (SubName, NewUser))
                     return
 
                 userlistsorted=sorted(userlist)
@@ -474,6 +477,8 @@ def append_to_automoderator(SubName, NewUser, UserScore):
                     for i in range(0, offset):
                         newconfigdata += ' '
                     newconfigdata += '- %s\n' % outputuser
+                newconfigdata += "%s\n" % line
+                    
         else:
             newconfigdata += "%s\n" % line
 
@@ -487,8 +492,8 @@ def append_to_automoderator(SubName, NewUser, UserScore):
 
     # Update the automoderator config
     try:
-        wikipage.edit(newconfigdata, reason='SUBWATCHBOT added: %s UserScore=%s' % (newuser.lower(), UserScore))
-        logger.info("%s: Updated automod config" % SubName)
+        wikipage.edit(newconfigdata, reason='SUBWATCHBOT added: %s UserScore=%s' % (NewUser.lower(), UserScore))
+        logger.info("%-20s: Updated automod config" % SubName)
     except Exception as err:
         logger.warning("Could not edit automod config, skipping")
 
@@ -503,25 +508,30 @@ def check_comment(comment):
     authorname = str(comment.author.name)
     User_Score=0
 
-    logger.info("%s: process comment: %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
+    logger.info("%-20s: process comment: %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
 
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
-            logger.info("%s:   bot user skip" % subname)
+            logger.info("%-20s:   bot user skip" % subname)
             return
     if authorname.lower() == "automoderator":
-            logger.info("%s:   automoderator user skip" % subname)
+            logger.info("%-20s:   automoderator user skip" % subname)
             return
     if 'userexceptions' in Settings['SubConfig'][subname]:
         if authorname.lower() in (name.lower() for name in Settings['SubConfig'][subname]['userexceptions']):
-            logger.info("%s:   userexceptions, skipping: %s" % (subname,authorname))
+            logger.info("%-20s:   userexceptions, skipping: %s" % (subname,authorname))
             return
+
+    if 'subsearchlist' not in Settings['SubConfig'][subname]:
+        logger.error("UNKNOWN subsearchlist for (%s) REFRESHING." % subname)
+        logger.error("Before SUB: %s" % Settings['SubConfig'][subname]['subsearchlist'])
+        get_subreddit_settings(subname)
 
     # get user score
     if 'subsearchlist' in Settings['SubConfig'][subname]:
         searchsubs = Settings['SubConfig'][subname]['subsearchlist']
         User_Score = get_user_score(authorname, subname, searchsubs)
-        logger.info("%s:   user %s score=%s" % (subname, authorname, User_Score))
+        logger.info("%-20s:   user %s score=%s" % (subname, authorname, User_Score))
     else:
         logger.error("UNKNOWN subsearchlist for (%s)" % subname)
         logger.error("Sub config: %s" % Settings['SubConfig'][subname])
@@ -531,37 +541,38 @@ def check_comment(comment):
     # 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_remove']) and int(Settings['SubConfig'][subname]['level_remove']) > 0:
         if comment.banned_by is not None:
-            logger.info("%s:    -Removed-ALREADY removed by %s" % (subname,comment.banned_by))
+            logger.info("%-20s:    -Removed-ALREADY removed by %s" % (subname,comment.banned_by))
         else:
-            logger.info("%s:    +Removed" % subname)
+            logger.info("%-20s:    +Removed" % subname)
             comment.mod.remove()
 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
+       logger.info("%-20s:    +RUN automod append" % subname)
        append_to_automoderator(subname, authorname, User_Score)
     
-    if 'level_ban' not in Settings['SubConfig'][subname]:
-        logger.error("level_ban not found for sub: (%s)" % subname)
+    if "level_ban" not in Settings['SubConfig'][subname]:
+        logger.error("C-level_ban not found for sub: (%s)" % subname)
+        get_subreddit_settings(subname)
         logger.error("Sub config: %s" % Settings['SubConfig'][subname])
-        return
 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_ban']) and int(Settings['SubConfig'][subname]['level_ban']) > 0:
         # ban
         if comment.author not in reddit.subreddit(subname).banned():
-            logger.info("%s:    +BAN User %s" % (subname, comment.author))
+            logger.info("%-20s:    +BAN User %s %s>%s" % (subname, comment.author, User_Score, Settings['SubConfig'][subname]['level_ban']))
             reddit.subreddit(subname).banned.add(comment.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+comment.permalink)
         else:
-            logger.info("%s:    -BAN User %s ALREADY BANNED" % (subname, comment.author))
+            logger.info("%-20s:    -BAN User %s ALREADY BANNED" % (subname, comment.author))
         # mute
         if Settings['SubConfig'][subname]['mute_when_banned']:
             if comment.author not in reddit.subreddit(subname).muted():
-                logger.info("%s:    +MUTE User %s" % (subname, comment.author.id))
+                logger.info("%-20s:    +MUTE User %s" % (subname, comment.author.id))
                 reddit.subreddit(subname).muted.add(comment.author)
             else:
-                logger.info("%s:    -MUTE User %s ALREADY MUTED" % (subname,comment.author))
+                logger.info("%-20s:    -MUTE User %s ALREADY MUTED" % (subname,comment.author))
 
     # elif because user was banned, then no need to report to modqueue for further review
     elif int(User_Score) > int(Settings['SubConfig'][subname]['level_report']) and int(Settings['SubConfig'][subname]['level_report']) > 0:
-        logger.info("%s:    +Report to ModQueue" % subname)
+        logger.info("%-20s:    +Report to ModQueue" % subname)
         comment.report('Possible Troll Post -- User Score=%s' % User_Score)
 
 
@@ -586,7 +597,7 @@ def check_submission(submission):
             logger.debug("    userexceptions, skipping: %s" % authorname)
             return
 
-    logger.info("%s: process submission: %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(submission.created_utc)), submission.author, submission.permalink))
+    logger.info("%-20s: process submission: %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(submission.created_utc)), submission.author, submission.permalink))
 
     # get user score
     if 'subsearchlist' not in Settings['SubConfig'][subname]:
@@ -595,7 +606,7 @@ def check_submission(submission):
     if 'subsearchlist' in Settings['SubConfig'][subname]:
         searchsubs = Settings['SubConfig'][subname]['subsearchlist']
         User_Score = get_user_score(authorname, subname, searchsubs)
-        logger.info("%s:   user %s score=%s" % (subname, authorname, User_Score))
+        logger.info("%-20s:   user %s score=%s" % (subname, authorname, User_Score))
     else:
         logger.error("UNKNOWN subsearchlist for (%s)" % subname)
         logger.error("Sub config: %s" % Settings['SubConfig'][subname])
@@ -607,13 +618,13 @@ def check_submission(submission):
     # 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_remove']) and int(Settings['SubConfig'][subname]['level_remove']) > 0:
         if submission.selftext == "[Removed]":
-            logger.info("%s:    -Remove-ALREADY by %s" % (subname, submission.selftext))
+            logger.info("%-20s:    -Remove-ALREADY by %s" % (subname, submission.selftext))
         elif submission.selftext == "[deleted]":
-            logger.info("%s:    -Remove-ALREADY by User Deleted %s" % (subname, submission.selftext))
+            logger.info("%-20s:    -Remove-ALREADY by User Deleted %s" % (subname, submission.selftext))
         else:
-            logger.info("%s:    +Remove" % subname)
+            logger.info("%-20s:    +Remove" % subname)
             submission.mod.remove()
-            logger.info("%s:    +Lock" % subname)
+            logger.info("%-20s:    +Lock" % subname)
             submission.mod.lock()
 
     if 'level_automoderator' not in Settings['SubConfig'][subname]:
@@ -626,35 +637,33 @@ def check_submission(submission):
         return
 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
+        logger.info("%-20s:    +RUN automod append" % subname)
         append_to_automoderator(subname, authorname, User_Score)
 
     if 'level_ban' not in Settings['SubConfig'][subname]:
+        logger.error("S-level_ban not found for sub: (%s)" % subname)
         get_subreddit_settings(subname)
-
-    if 'level_ban' not in Settings['SubConfig'][subname]:
-        logger.error("level_ban not found for sub: (%s)" % subname)
         logger.error("Sub config: %s" % Settings['SubConfig'][subname])
         logger.error("ALL config: %s" % Settings['SubConfig'])
-        return
 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_ban']) and int(Settings['SubConfig'][subname]['level_ban']) > 0:
         # ban
         if submission.author not in reddit.subreddit(subname).banned():
-            logger.info("%s:    +BAN User %s" % (subname, submission.author))
+            logger.info("%-20s:    +BAN User %s" % (subname, submission.author))
             reddit.subreddit(subname).banned.add(submission.author, ban_reason='TrollDetected Score='+str(User_Score), note='https://reddit.com'+submission.permalink)
         else:
-            logger.info("%s:    -BAN User %s ALREADY BANNED" % (subname, submission.author))
+            logger.info("%-20s:    -BAN User %s ALREADY BANNED" % (subname, submission.author))
         # mute
         if Settings['SubConfig'][subname]['mute_when_banned']:
             if submission.author not in reddit.subreddit(subname).muted():
-                logger.info("%s:    +MUTE User %s" % (subname, submission.author))
+                logger.info("%-20s:    +MUTE User %s" % (subname, submission.author))
                 reddit.subreddit(subname).muted.add(submission.author)
             else:
-                logger.info("%s:    -MUTE User %s ALREADY MUTED" % (subname, submission.author))
+                logger.info("%-20s:    -MUTE User %s ALREADY MUTED" % (subname, submission.author))
 
     # elif because user was banned, then no need to report to modqueue for further review
     elif int(User_Score) > int(Settings['SubConfig'][subname]['level_report']) and int(Settings['SubConfig'][subname]['level_report']) > 0:
-        logger.info("%s:    +Report to ModQueue" % subname)
+        logger.info("%-20s:    +Report to ModQueue" % subname)
         submission.report('Possible Troll Post -- User Score=%s' % User_Score)
 
 
@@ -683,6 +692,7 @@ def main():
 
     # Initalize
     next_refresh_time = 0
+    subList = []
 
     while start_process and os.path.isfile(RUNNING_FILE):
         #logger.debug("Start Main Loop")
@@ -691,7 +701,6 @@ def main():
         if int(round(time.time())) > next_refresh_time:
             logger.debug("REFRESH Start")
             accept_mod_invites()
-            subList = []
             for subs in reddit.user.moderator_subreddits():
                 sub_permissions = []
                 SubName = str(subs).lower()
@@ -699,13 +708,15 @@ def main():
                 sub_permissions = get_mod_permissions(SubName)
                 if sub_permissions[0]:  # We are a moderator.
                     if 'subsearchlist' in Settings['SubConfig'][SubName]:
-                        subList.append(SubName)
+                        if SubName not in subList:
+                            subList.append(SubName)
                 else: 
                     logger.warning("SKIPPING SUB %s due to no moderator permissions", SubName)
             logger.info("subList: %s" % subList)
             next_refresh_time = int(
                 round(time.time())) + (60 * int(Settings['Config']['config_refresh_mins']))
             logger.info("--- Settings REFRESH Completed")
+            #logger.info("%s" % Settings['SubConfig'])
 
         multireddits = build_multireddit_groups(subList)
         for multi in multireddits:
