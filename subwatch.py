@@ -374,7 +374,8 @@ def append_to_automoderator(SubName, NewUser, UserScore):
                     logger.info("%-20s: USER %s APPEND - already in list, skipping" % (SubName, NewUser))
                     return
 
-                userlistsorted=sorted(userlist)
+                #userlistsorted=sorted(userlist)
+                userlistsorted=list(sorted(set(userlist)))
                 for outputuser in userlistsorted:
                     for i in range(0, offset):
                         newconfigdata += ' '
