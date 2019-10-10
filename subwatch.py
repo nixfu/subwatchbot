@@ -21,6 +21,9 @@ import requests
 import sqlite3
 import pprint
 import json
+sys.path.append("%s/github/bots/userdata" % os.getenv("HOME"))
+from RedditUserData import get_User_Data
+
 
 
 # =============================================================================
@@ -39,8 +42,8 @@ ENVIRONMENT = config.get("BOT", "environment")
 DEV_USER_NAME = config.get("BOT", "dev_user")
 RUNNING_FILE = "bot.pid"
 
-LOG_LEVEL = logging.INFO
-#LOG_LEVEL = logging.DEBUG
+#LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 LOG_FILENAME = Settings['Config']['logfile']
 LOG_FILE_INTERVAL = 2
 LOG_FILE_BACKUPCOUNT = 5
@@ -132,9 +135,7 @@ def create_db():
     try:
         con = sqlite3.connect(Settings['Config']['dbfile'])
         ccur = con.cursor()
-        ccur.execute(
-            "CREATE TABLE IF NOT EXISTS processed (id TEXT, epoch INTEGER)")
-        ccur.execute("CREATE TABLE IF NOT EXISTS trolldata (user TEXT, epoch INTEGER, sub TEXT, comment_karma INTEGER, comment_count INTEGER, sub_karma INTEGER, sub_count INTEGER)")
+        ccur.execute("CREATE TABLE IF NOT EXISTS processed (id TEXT, epoch INTEGER)")
         con.commit
     except sqlite3.Error as e:
         logger.error("Error2 {}:".format(e.args[0]))
@@ -143,113 +144,14 @@ def create_db():
         if con:
             con.close()
 
-# first check if we have recent data on the user in db
-def get_user_data_sql(Search_User, Search_Sub):
-    # update cache db
-    comment_karma = -1
-    comment_count = -1
-    sub_karma = -1
-    sub_count = -1
-    min_age = (int(round(time.time())) -
-               (86400 * int(Settings['Config']['userdata_refresh_days'])))
-    try:
-        con = sqlite3.connect(Settings['Config']['dbfile'])
-        qcur = con.cursor()
-        qcur.execute('''SELECT ifnull(comment_karma,0),ifnull(comment_count,0), ifnull(sub_karma,0), ifnull(sub_count,0), epoch FROM trolldata WHERE user=? and sub=?''', (str(
-            Search_User), Search_Sub))
-        row = qcur.fetchone()
-        if row and row[4] > min_age:
-            #logger.debug("Found SQL: %s" % row)
-            comment_karma = row[0]
-            comment_count = row[1]
-            sub_karma = row[2]
-            sub_count = row[3]
-    except sqlite3.Error as e:
-        logger.error("Error2 {}:".format(e.args[0]))
-        logger.error("User=%s Sub=%s" % (Search_User, Search_Sub))
-        sys.exit(1)
-    finally:
-        if con:
-            con.close()
-    return [comment_karma, comment_count, sub_karma, sub_count]
-
-
-def get_author_comments(**kwargs):
-    data = {}
-    try:
-        r = requests.get("https://api.pushshift.io/reddit/comment/search/", params=kwargs)
-        data = r.json()
-    except requests.exceptions.HTTPError as errh:
-        logger.error ("Http Error:",errh)
-    except requests.exceptions.ConnectionError as errc:
-        logger.error ("Error Connecting:",errc)
-    except requests.exceptions.Timeout as errt:
-        logger.error ("Timeout Error:",errt)
-    except requests.exceptions.RequestException as err:
-        logger.error ("OOps: Something Else",err)
-    return data['data']
-
-
-def get_author_submissions(**swargs):
-    r = requests.get("https://api.pushshift.io/reddit/submission/search/", params=swargs)
-    data = r.json()
-    return data['data']
-
-
-def refresh_user_data(Search_User, Search_Sub):
-    total_comment_karma = 0
-    total_comment_count = 0
-    total_sub_karma = 0
-    total_sub_count = 0
-
-    comments = get_author_comments(
-        author=Search_User, size=1000, sort='desc', sort_type='created_utc', subreddit=Search_Sub)
-    for comment in comments:
-        total_comment_karma += comment['score']
-        total_comment_count += 1
-    time.sleep(1)
-
-    submissions = get_author_submissions(
-        author=Search_User, size=1000, sort='desc', sort_type='created_utc', subreddit=Search_Sub)
-    for submit in submissions:
-        total_sub_karma += submit['score']
-        total_sub_count += 1
-
-    # update cache db
-    try:
-        con = sqlite3.connect(Settings['Config']['dbfile'])
-        icur = con.cursor()
-        # CREATE TABLE trolldata (user TEXT, epoch INTEGER, sub TEXT, comment_karma INTEGER, comment_count INTEGER, sub_karma INTEGER, sub_count INTEGER);
-        icur.execute("UPDATE trolldata SET epoch=?, comment_karma=?, comment_count=?, sub_karma=?, sub_count=? WHERE user=? and sub=?", [
-                     int(round(time.time())), total_comment_karma, total_comment_count, total_sub_karma, total_sub_count, str(Search_User), Search_Sub])
-        icur.execute("INSERT INTO trolldata VALUES(?, ?, ?, ?, ?, ?, ?)", [str(Search_User), int(round(
-            time.time())), Search_Sub, total_comment_karma, total_comment_count, total_sub_karma, total_sub_count])
-        con.commit()
-    except sqlite3.Error as e:
-        logger.error("Error {}:".format(e.args[0]))
-        sys.exit(1)
-    finally:
-        if con:
-            con.close()
-    return [total_comment_karma, total_comment_count, total_sub_karma, total_sub_count]
-
-
 def get_user_score(Search_User, Search_Sub, Search_Subs_List):
     User_Score = 0
-    #logger.debug("Getting User Score: %s %s" % (Search_User, Search_Subs_List))
+    User_Data = get_User_Data(reddit, Search_User, Search_Subs_List)
     for sreddit in Search_Subs_List:
-        trolldata = []
-        sqldata = get_user_data_sql(Search_User, sreddit)
-        if sqldata and sqldata[0] != -1:
-            #logger.debug("Using SQL Data")
-            trolldata = sqldata
-        elif not sreddit in trolldata:
-            trolldata = refresh_user_data(Search_User, sreddit)
-        # add comment score
-        User_Score += ((trolldata[0] + trolldata[1]) *
+        User_Score += ((User_Data[sreddit]['c_karma'] + User_Data[sreddit]['c_count']) *
                        int(Settings['SubConfig'][Search_Sub]['comment_multiplier']))
         # add submission score
-        User_Score += ((trolldata[2] + trolldata[3]) *
+        User_Score += ((User_Data[sreddit]['s_karma'] + User_Data[sreddit]['s_count']) *
                        int(Settings['SubConfig'][Search_Sub]['comment_multiplier']))
     return User_Score
 
