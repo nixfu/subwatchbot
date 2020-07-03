@@ -42,8 +42,8 @@ ENVIRONMENT = config.get("BOT", "environment")
 DEV_USER_NAME = config.get("BOT", "dev_user")
 RUNNING_FILE = "bot.pid"
 
-#LOG_LEVEL = logging.INFO
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
+#LOG_LEVEL = logging.DEBUG
 LOG_FILENAME = Settings['Config']['logfile']
 LOG_FILE_INTERVAL = 2
 LOG_FILE_BACKUPCOUNT = 5
@@ -147,6 +147,7 @@ def create_db():
 def get_user_score(Search_User, Search_Sub, Search_Subs_List):
     User_Score = 0
     User_Data = get_User_Data(reddit, Search_User, Search_Subs_List)
+    print (User_Data)
     for sreddit in Search_Subs_List:
         User_Score += ((User_Data[sreddit]['c_karma'] + User_Data[sreddit]['c_count']) *
                        int(Settings['SubConfig'][Search_Sub]['comment_multiplier']))
