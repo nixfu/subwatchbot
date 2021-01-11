@@ -20,6 +20,7 @@ import re
 import requests
 import sqlite3
 import pprint
+pp = pprint.PrettyPrinter(indent=4)
 import json
 sys.path.append("%s/github/bots/userdata" % os.getenv("HOME"))
 from RedditUserData import get_User_Data
@@ -147,14 +148,27 @@ def create_db():
 def get_user_score(Search_User, Search_Sub, Search_Subs_List):
     User_Score = 0
     User_Data = get_User_Data(reddit, Search_User, Search_Subs_List)
-    print (User_Data)
+    #pp.pprint(User_Data)
     for sreddit in Search_Subs_List:
+        # add comment score
         User_Score += ((User_Data[sreddit]['c_karma'] + User_Data[sreddit]['c_count']) *
                        int(Settings['SubConfig'][Search_Sub]['comment_multiplier']))
         # add submission score
         User_Score += ((User_Data[sreddit]['s_karma'] + User_Data[sreddit]['s_count']) *
                        int(Settings['SubConfig'][Search_Sub]['comment_multiplier']))
     return User_Score
+
+def get_user_subkarma(Search_User, Search_Sub):
+    Sub_Karma = 0
+    Sub_Data = get_User_Data(reddit, Search_User, [ Search_Sub ])
+    #pp.pprint(Sub_Data)
+
+    # add comment score
+    Sub_Karma += Sub_Data[Search_Sub]['c_karma'] + Sub_Data[Search_Sub]['c_count']
+    # add submission score
+    Sub_Karma += Sub_Data[Search_Sub]['s_karma'] + Sub_Data[Search_Sub]['s_count']
+
+    return Sub_Karma
 
 
 def check_message_processed_sql(messageid):
@@ -233,7 +247,7 @@ def get_subreddit_settings(SubName):
 
     # use settings from subreddit wiki else use defaults
     settingkeys = ['level_report', 'level_remove', 'level_ban', 'level_automoderator', 'archive_modmail',
-                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist', 'use_automoderator', 'TotesMessenger']
+                   'mute_when_banned', 'submission_multiplier', 'comment_multiplier', 'userexceptions', 'subsearchlist', 'use_automoderator', 'TotesMessenger', 'min_post_karma', 'misinfo_approve']
     for key in settingkeys:
         if key in wikidata:
             Settings['SubConfig'][SubName][key] = wikidata[key]
@@ -352,7 +366,7 @@ def append_to_automoderator(SubName, NewUser, UserScore):
     newconfigdata=""
     header_found=0
     read_users=0
-    userlist = []
+    userlist = {}
 
     # Step through the current automoderator config and read in list of users, then output a new sorted list
     for line in automodconfigdata.splitlines():
@@ -365,24 +379,28 @@ def append_to_automoderator(SubName, NewUser, UserScore):
         elif read_users == 1:
             if re.search(r'\s-', line):
                 x = line.split("-")
-                userlist.append(x[1].strip())
+                xname = x[1].split()
+                x_username = xname[0]
+                if len(xname) > 1:
+                    x_userscore = xname[2]
+                else:
+                    x_userscore = ""
+                userlist[x_username] = x_userscore
             else:
+                logger.info("processing end line")
                 read_users=0
                 if NewUser.lower() not in userlist:
-                    userlist.append("%s # UserScore=%s" % (NewUser.lower(), UserScore))
+                    userlist[NewUser.lower()] = "UserScore=%s" % UserScore
                     logger.info("%-20s: USER %s APPEND to automoderator list" % (SubName, NewUser))
                 else:
-                    logger.info("%-20s: USER %s APPEND - already in list, skipping" % (SubName, NewUser))
+                    logger.info("%-20s: USER %s APPEND SKIP - already in list, skipping" % (SubName, NewUser))
                     return
 
-                #userlistsorted=sorted(userlist)
-                userlistsorted=list(sorted(set(userlist)))
-                for outputuser in userlistsorted:
+                for outputuser in sorted (userlist.keys()):
                     for i in range(0, offset):
                         newconfigdata += ' '
-                    newconfigdata += '- %s\n' % outputuser
+                    newconfigdata += '- %s # %s\n' % (outputuser, userlist[outputuser])
                 newconfigdata += "%s\n" % line
-                    
         else:
             newconfigdata += "%s\n" % line
 
@@ -403,6 +421,7 @@ def append_to_automoderator(SubName, NewUser, UserScore):
 
     return
                 
+                
 
 def check_comment(comment):
     authorname = ""
@@ -413,6 +432,7 @@ def check_comment(comment):
     User_Score=0
 
     logger.info("%-20s: process comment: %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M', time.localtime(comment.created_utc)), authorname, comment.permalink))
+
 
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
@@ -448,6 +468,7 @@ def check_comment(comment):
             logger.info("%-20s:    -Removed-ALREADY removed by %s" % (subname,comment.banned_by))
         else:
             logger.info("%-20s:    +Removed" % subname)
+            comment.mod.lock()
             comment.mod.remove()
 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_automoderator']) and int(Settings['SubConfig'][subname]['level_automoderator']) > 0:
@@ -503,10 +524,42 @@ def check_submission(submission):
 
     logger.info("%-20s: process submission: %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(submission.created_utc)), submission.author, submission.permalink))
 
-    # get user score
     if 'subsearchlist' not in Settings['SubConfig'][subname]:
         get_subreddit_settings(subname)
 
+    # Skip if already approved
+    #
+    approved_by = str(submission.approved_by)
+    if approved_by and approved_by != "None":
+        logger.info(" --- Approved by(skipping): (%s)" % approved_by)
+        return
+
+    # Processing based on User_Score
+    # 
+    User_Sub_Karma = get_user_subkarma(authorname, subname)
+    if 'min_post_karma' in Settings['SubConfig'][subname] and int(Settings['SubConfig'][subname]['min_post_karma']) > 0:
+        if int(User_Sub_Karma) > int(Settings['SubConfig'][subname]['min_post_karma']):
+            logger.info("%-20s:   user %s subkarma=%s -- POST APPROVED %s" % (subname, authorname, User_Sub_Karma, Settings['SubConfig'][subname]['min_post_karma']))
+        else:
+            logger.info("%-20s:   user %s subkarma=%s -- POST *DENY* %s" % (subname, authorname, User_Sub_Karma, Settings['SubConfig'][subname]['min_post_karma']))
+
+            replynote = "!ReviewPost - submission made by new user please review /u/%s (%s)" % ( authorname, User_Sub_Karma )
+
+            modnote = "**Attention: A submission was made by a user with low karama in the subreddit and automatically removed.  Please check for quality before approving.**\n\n"
+            modnote += "User: /u/%s  subkarma=%s  (less than %s)\n\n" % (authorname, User_Sub_Karma, Settings['SubConfig'][subname]['min_post_karma'])
+            modnote += "Link: http://reddit.com%s\n\n" % submission.permalink
+            modnote += "Title:\n\n"
+            modnote += ">%s\n\n" % submission.title
+            modnote += "\n\n"
+    
+            if 'goldandblack' in subname:
+               submission.reply(replynote)
+            else:
+               submission.mod.remove()
+               reddit.subreddit(subname).message("Low Karma Submission", modnote)
+
+    # Processing based on User_Score
+    # 
     if 'subsearchlist' in Settings['SubConfig'][subname]:
         searchsubs = Settings['SubConfig'][subname]['subsearchlist']
         User_Score = get_user_score(authorname, subname, searchsubs)
@@ -516,10 +569,7 @@ def check_submission(submission):
         logger.error("Sub config: %s" % Settings['SubConfig'][subname])
         logger.error("ALL config: %s" % Settings['SubConfig'])
         return
-
     
-    # Processing based on User_Score
-    # 
     if int(User_Score) > int(Settings['SubConfig'][subname]['level_remove']) and int(Settings['SubConfig'][subname]['level_remove']) > 0:
         if submission.selftext == "[Removed]":
             logger.info("%-20s:    -Remove-ALREADY by %s" % (subname, submission.selftext))
@@ -570,6 +620,34 @@ def check_submission(submission):
         logger.info("%-20s:    +Report to ModQueue" % subname)
         submission.report('Possible Troll Post -- User Score=%s' % User_Score)
 
+def check_modqueuereport(reportitem):
+    authorname = ""
+    subname = ""
+    subreddit = reportitem.subreddit
+    subname = str(reportitem.subreddit.display_name).lower()
+    ReportMisinfoFound = False
+    ReportOtherFound = False
+
+    if not Settings['SubConfig'][subname]['misinfo_approve']:
+       return
+
+    if reportitem.name.startswith("t1"):
+        reportType = "Comment"
+    elif reportitem.name.startswith("t3"):
+        reportType = "Submission"
+    else:
+        return
+
+    for user_report in reportitem.user_reports:
+        if "This is misinformation" in user_report[0]:
+            ReportMisinfoFound = True
+        else:
+            ReportOtherFound = True
+
+        if ReportMisinfoFound and not ReportOtherFound:
+            logger.info("%-20s: process MODQUEUE misinfo item: %s user=%s http://reddit.com%s" % (subname, time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(reportitem.created_utc)), str(reportitem.author), str(reportitem.permalink)))
+            reportitem.mod.ignore_reports()
+            reportitem.mod.approve()
 
 # =============================================================================
 # MAIN
@@ -597,6 +675,7 @@ def main():
     # Initalize
     next_refresh_time = 0
     subList = []
+    subList_prev = []
 
     while start_process and os.path.isfile(RUNNING_FILE):
         #logger.debug("Start Main Loop")
@@ -605,7 +684,8 @@ def main():
         if int(round(time.time())) > next_refresh_time:
             logger.debug("REFRESH Start")
             accept_mod_invites()
-            for subs in reddit.user.moderator_subreddits():
+            #redditorme = reddit.user.me()
+            for subs in reddit.user.me().moderated():
                 sub_permissions = []
                 SubName = str(subs).lower()
                 get_subreddit_settings(SubName)
@@ -622,39 +702,56 @@ def main():
             logger.info("--- Settings REFRESH Completed")
             #logger.info("%s" % Settings['SubConfig'])
 
-        multireddits = build_multireddit_groups(subList)
-        for multi in multireddits:
+        #subList = [ 'subwatchbot_test', 'minarchism' ]
+        if not subList == subList_prev:
+           logger.debug("Build(re) multireddit")
+           multireddits = build_multireddit_groups(subList)
+           for multi in multireddits:
             #subreddit = reddit.subreddit(settings.REDDIT_SUBREDDIT)
-            subreddit = reddit.subreddit('+'.join(multi))
-            comment_stream = subreddit.stream.comments(pause_after=-1)
-            submission_stream = subreddit.stream.submissions(pause_after=-1)
+             subreddit = reddit.subreddit('+'.join(multi))
+           subList_prev = subList
 
-            try:
-              # process submission stream
-              for submission in submission_stream:
-                if submission is None:
-                   break
-                elif check_message_processed_sql(submission.id):
-                   continue
-                else:
-                   check_submission(submission)
+        subreddit = reddit.subreddit('+'.join(multi))
+        comment_stream = subreddit.stream.comments(pause_after=-1)
+        submission_stream = subreddit.stream.submissions(pause_after=-1)
+        modqueue_stream = subreddit.mod.stream.reports(pause_after=-1)
 
-              # process comment stream
-              for comment in comment_stream:
-                if comment is None:
-                   break
-                elif check_message_processed_sql(comment.id):
-                   continue
-                else:
-                   check_comment(comment)
+        try:
+          # process submission stream
+          for submission in submission_stream:
+            if submission is None:
+               break
+            elif check_message_processed_sql(submission.id):
+               continue
+            else:
+               check_submission(submission)
 
-            # Allows the bot to exit on ^C, all other exceptions are ignored
-            except KeyboardInterrupt:
-                break
-            except Exception as err:
-                logger.exception("Unknown Exception in Main Loop")
+          # process comment stream
+          for comment in comment_stream:
+            if comment is None:
+               break
+            elif check_message_processed_sql(comment.id):
+               continue
+            else:
+               check_comment(comment)
 
-        #logger.debug("End Main Loop - Pause %s secs" % Settings['Config']['main_loop_pause_secs'])
+          # process modqueue stream
+          # TODO: put into own function if it gets any more complicated
+          for reportitem in modqueue_stream:
+            if reportitem is None:
+              break
+            else:
+              check_modqueuereport(reportitem)
+
+
+
+        # Allows the bot to exit on ^C, all other exceptions are ignored
+        except KeyboardInterrupt:
+            break
+        except Exception as err:
+            logger.exception("Unknown Exception in Main Loop")
+
+        logger.debug("End Main Loop - Pause %s secs" % Settings['Config']['main_loop_pause_secs'])
         time.sleep(int(Settings['Config']['main_loop_pause_secs']))
 
     logger.info("end program")
