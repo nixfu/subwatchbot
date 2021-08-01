@@ -33,6 +33,7 @@ from RedditUserData import get_User_Data
 # Reads the config file
 config = configparser.ConfigParser()
 config.read("bot.cfg")
+config.read("auth.cfg")
 
 Settings = {}
 Settings = {s: dict(config.items(s)) for s in config.sections()}
@@ -43,6 +44,11 @@ ENVIRONMENT = config.get("BOT", "environment")
 DEV_USER_NAME = config.get("BOT", "dev_user")
 RUNNING_FILE = "bot.pid"
 
+
+database = "%s/github/bots/subwatchbot/usersdata.db" % os.getenv("HOME")
+
+
+
 LOG_LEVEL = logging.INFO
 #LOG_LEVEL = logging.DEBUG
 LOG_FILENAME = Settings['Config']['logfile']
@@ -50,16 +56,20 @@ LOG_FILE_INTERVAL = 2
 LOG_FILE_BACKUPCOUNT = 5
 LOG_FILE_MAXSIZE = 5000 * 256
 
+# Define custom log level 5=trace
+TRACE_LEVEL = 5
+logging.addLevelName(TRACE_LEVEL, 'TRACE')
+def trace(self, message, *args, **kws):
+        self.log(TRACE_LEVEL, message, *args, **kws) 
+logging.Logger.trace = trace
+
 logger = logging.getLogger('bot')
 logger.setLevel(LOG_LEVEL)
-#log_formatter = logging.Formatter( '%(levelname)-8s:%(funcName)-10s-%(lineno)4d-%(asctime)s - %(message)s')
-#log_formatter = logging.Formatter( '%(levelname)-8s:%(lineno)4d-%(asctime)s - %(message)s')
 log_formatter = logging.Formatter('%(levelname)-8s:%(asctime)s:%(lineno)4d - %(message)s')
 log_stderrHandler = logging.StreamHandler()
 log_stderrHandler.setFormatter(log_formatter)
 logger.addHandler(log_stderrHandler)
 if LOG_FILENAME:
-    #log_fileHandler = logging.handlers.RotatingFileHandler(LOG_FILENAME, maxBytes=LOG_FILE_MAXSIZE, backupCount=LOG_FILE_BACKUPCOUNT)
     log_fileHandler = logging.handlers.TimedRotatingFileHandler(LOG_FILENAME, when='d', interval=LOG_FILE_INTERVAL, backupCount=LOG_FILE_BACKUPCOUNT) 
     log_fileHandler.setFormatter(log_formatter)
     logger.addHandler(log_fileHandler)
@@ -111,9 +121,11 @@ default_wiki_page_content='''---
     #------------------------------------------------------------------------------------------------------------------------------------------------------#
     #- mute_when_banned - (optional) false by default, the bot will also mute the user when they are banned, NOTE: REQUIRES moderator mail premission setting if enabled
     #mute_when_banned: true
+    #------------------------------------------------------------------------------------------------------------------------------------------------------#
+    #- misinfo_approve - (optional) false by default, the bot will automatically approve misinformation reports.
+    #misinfo_approve: true
     # 
     #------------------------------------------------------------------------------------------------------------------------------------------------------#
-    #- mute_when_banned - (optional) false by default, the bot will also mute the user when they are banned, NOTE: REQUIRES moderator mail premission setting if enabled
     #- userexceptions - (optional) if there is a user that has a score about the thresholds but no action should be taken, then add 
     #-                          them to this list and the bot will bypass them
     #userexceptions:
@@ -147,8 +159,7 @@ def create_db():
 
 def get_user_score(Search_User, Search_Sub, Search_Subs_List):
     User_Score = 0
-    User_Data = get_User_Data(reddit, Search_User, Search_Subs_List)
-    #pp.pprint(User_Data)
+    User_Data = get_User_Data(reddit, Search_User, Search_Subs_List, 7, 'reddit', 'SMALL', database)
     for sreddit in Search_Subs_List:
         # add comment score
         User_Score += ((User_Data[sreddit]['c_karma'] + User_Data[sreddit]['c_count']) *
@@ -161,7 +172,6 @@ def get_user_score(Search_User, Search_Sub, Search_Subs_List):
 def get_user_subkarma(Search_User, Search_Sub):
     Sub_Karma = 0
     Sub_Data = get_User_Data(reddit, Search_User, [ Search_Sub ])
-    #pp.pprint(Sub_Data)
 
     # add comment score
     Sub_Karma += Sub_Data[Search_Sub]['c_karma'] + Sub_Data[Search_Sub]['c_count']
@@ -267,7 +277,7 @@ def get_subreddit_settings(SubName):
         Settings['SubConfig'][SubName]['subsearchlist'] = [ 'chapotraphouse', 'chapotraphouse2']
         logger.debug("%s NO DEFAULT SubSearchList" % SubName)
 
-    logger.debug("%s SETTINGS %s" % (SubName, Settings['SubConfig'][SubName]))
+    logger.trace("%s SETTINGS %s" % (SubName, Settings['SubConfig'][SubName]))
 
 def get_mod_permissions(SubName):
     am_moderator = False
@@ -282,23 +292,22 @@ def get_mod_permissions(SubName):
             # Get the permissions I have as a list. e.g. `['wiki']`
             my_permissions = moderator.mod_permissions
 
-    logger.debug("%s PERMS - Mod=%s Perms=%s" % (SubName, am_moderator, my_permissions))
+    logger.trace("%s PERMS - Mod=%s Perms=%s" % (SubName, am_moderator, my_permissions))
 
     if "all" in my_permissions:
-        #logger.debug("%s Sub Permissions = ALL" % SubName)
         pass
     else:
         if 'mail' not in my_permissions:
             # make sure we overwide without mail perms
-            logger.debug("%s Sub Permissions DOES NOT contain MAIL perms. Setting level_report=0" % SubName)
+            logger.trace("%s Sub Permissions DOES NOT contain MAIL perms. Setting level_report=0" % SubName)
             Settings['SubConfig'][SubName]['mute_when_banned'] = False
         if 'wiki' not in my_permissions:
-            logger.debug("%s Sub Permissions DOES NOT contain WIKI perms." % SubName)
+            logger.trace("%s Sub Permissions DOES NOT contain WIKI perms." % SubName)
         if 'posts' not in my_permissions:
-            logger.debug("%s Sub Permissions DOES NOT contain POSTS perms. Setting level_remove=0" % SubName)
+            logger.trace("%s Sub Permissions DOES NOT contain POSTS perms. Setting level_remove=0" % SubName)
             Settings['SubConfig'][SubName]['level_remove'] = 0
         if 'access' not in my_permissions:
-            logger.debug("%s Sub Permissions DOES NOT contain ACCCESS perms. Setting level_ban=0" % SubName)
+            logger.trace("%s Sub Permissions DOES NOT contain ACCCESS perms. Setting level_ban=0" % SubName)
             Settings['SubConfig'][SubName]['level_ban'] = 0
 
     # TODO: Send a message to the mods about incorrect permissions maybe
@@ -306,7 +315,7 @@ def get_mod_permissions(SubName):
 
 
 def accept_mod_invites():
-    logger.debug("Run accept mod invites")
+    logger.trace("Run accept mod invites")
 
     for message in reddit.inbox.unread(limit=20):
         # pprint.pprint(repr(message))
@@ -371,7 +380,7 @@ def append_to_automoderator(SubName, NewUser, UserScore):
     # Step through the current automoderator config and read in list of users, then output a new sorted list
     for line in automodconfigdata.splitlines():
         if re.search("####\sSUBWATCH\sBOT",line):
-            logger.debug("- FOUND #SUBWATCHBOT header line")
+            logger.trace("- FOUND #SUBWATCHBOT header line")
             header_found=1
             read_users=1
             newconfigdata += "%s\n" % line
@@ -512,10 +521,10 @@ def check_submission(submission):
 
     # user exceptions
     if re.search('bot',str(authorname),re.IGNORECASE):
-            logger.debug("    bot user skip")
+            logger.trace("    bot user skip")
             return
     if authorname.lower() == "automoderator":
-            logger.debug("    bot user skip")
+            logger.trace("    bot user skip")
             return
     if 'userexceptions' in Settings['SubConfig'][subname]:
         if authorname.lower() in (name.lower() for name in Settings['SubConfig'][subname]['userexceptions']):
@@ -659,7 +668,7 @@ def main():
     logger.info("start program")
 
     # create db tables if needed
-    logger.debug("Create DB tables if needed")
+    logger.trace("Create DB tables if needed")
     create_db()
 
     if ENVIRONMENT == "DEV" and os.path.isfile(RUNNING_FILE):
@@ -678,7 +687,7 @@ def main():
     subList_prev = []
 
     while start_process and os.path.isfile(RUNNING_FILE):
-        #logger.debug("Start Main Loop")
+        logger.debug("Start Main Loop")
 
         # Only refresh sublists and wiki settings once an hour
         if int(round(time.time())) > next_refresh_time:
@@ -718,6 +727,7 @@ def main():
 
         try:
           # process submission stream
+          logger.debug("MAIN-Check submissions")
           for submission in submission_stream:
             if submission is None:
                break
@@ -727,6 +737,7 @@ def main():
                check_submission(submission)
 
           # process comment stream
+          logger.debug("MAIN-Check comments")
           for comment in comment_stream:
             if comment is None:
                break
@@ -736,13 +747,12 @@ def main():
                check_comment(comment)
 
           # process modqueue stream
-          # TODO: put into own function if it gets any more complicated
+          logger.debug("MAIN-Check modqueue")
           for reportitem in modqueue_stream:
             if reportitem is None:
               break
             else:
               check_modqueuereport(reportitem)
-
 
 
         # Allows the bot to exit on ^C, all other exceptions are ignored
